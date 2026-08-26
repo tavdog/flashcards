@@ -490,6 +490,39 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
   res.json(users);
 });
 
+app.post('/api/admin/users/:id/reset-password', requireAdmin, (req, res) => {
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  const password = req.body.password || '';
+  if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(password), target.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(target.id); // force re-login
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account here' });
+  }
+  db.transaction(() => {
+    const decks = db.prepare('SELECT id FROM decks WHERE user_id = ?').all(target.id);
+    for (const d of decks) {
+      const cards = db.prepare('SELECT image, image_back FROM cards WHERE deck_id = ?').all(d.id);
+      for (const c of cards) {
+        if (c.image) fs.unlink(path.join(UPLOAD_DIR, c.image), () => {});
+        if (c.image_back) fs.unlink(path.join(UPLOAD_DIR, c.image_back), () => {});
+      }
+      db.prepare('DELETE FROM cards WHERE deck_id = ?').run(d.id);
+    }
+    db.prepare('DELETE FROM decks WHERE user_id = ?').run(target.id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(target.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+  })();
+  res.json({ ok: true });
+});
+
 app.get('/api/decks', requireAuth, (req, res) => {
   const decks = db.prepare(`
     SELECT d.id, d.name, d.is_public, d.created_at,

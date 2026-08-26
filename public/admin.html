@@ -88,6 +88,19 @@
     padding: 2px 8px;
     border-radius: 999px;
   }
+  td.actions { white-space: nowrap; text-align: right; width: 220px; }
+  td.actions button {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  td.actions button:hover { border-color: var(--accent); color: var(--accent); }
+  td.actions button.danger { margin-left: 6px; }
+  td.actions button.danger:hover { border-color: var(--danger); color: var(--danger); background: #fef2f2; }
 </style>
 </head>
 <body>
@@ -116,20 +129,46 @@
   }
   const users = await res.json();
   const rows = users.map((u) => `
-    <tr>
+    <tr data-id="${u.id}" data-name="${escapeHtml(u.username)}">
       <td>#${u.id}</td>
-      <td>${escapeHtml(u.username)}${u.is_admin ? ' <span class="badge">admin</span>' : ''}</td>
+      <td>${escapeHtml(u.username)}${u.is_admin ? ' <span class="badge">admin</span>' : ''}${u.id === me.id ? ' (you)' : ''}</td>
       <td class="num">${u.deck_count}</td>
       <td class="num">${u.card_count}</td>
       <td>${escapeHtml(fmtDate(u.created_at))}</td>
+      <td class="actions">
+        <button type="button" class="reset">Reset password</button>
+        ${u.id === me.id ? '' : '<button type="button" class="danger del">Delete</button>'}
+      </td>
     </tr>`).join('');
   el.outerHTML = `
-    <table>
+    <table id="users">
       <thead>
-        <tr><th>ID</th><th>User</th><th style="text-align:center">Decks</th><th style="text-align:center">Cards</th><th>Joined</th></tr>
+        <tr><th>ID</th><th>User</th><th style="text-align:center">Decks</th><th style="text-align:center">Cards</th><th>Joined</th><th></th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+  document.getElementById('users').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const tr = btn.closest('tr');
+    const id = tr.dataset.id;
+    const name = tr.dataset.name;
+    if (btn.classList.contains('reset')) {
+      const pw = prompt(`New password for "${name}" (min 4 characters):`);
+      if (pw === null) return;
+      const r = await fetch(`/api/admin/users/${id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+      });
+      alert(r.ok ? `Password reset for ${name}.` : ((await r.json()).error || 'Failed'));
+    } else if (btn.classList.contains('del')) {
+      if (!confirm(`Delete user "${name}"? This removes all their decks, cards, and images. Cannot be undone.`)) return;
+      const r = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+      if (r.ok) location.reload();
+      else alert((await r.json()).error || 'Failed to delete');
+    }
+  });
 })();
 
 function escapeHtml(s) {
