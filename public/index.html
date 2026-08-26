@@ -161,6 +161,10 @@
     display: flex;
     flex-direction: column;
   }
+  .card .face { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
+  .card .face.back { display: none; }
+  .card.flipped .face.front { display: none; }
+  .card.flipped .face.back { display: flex; }
   .card .thumb {
     width: 100%;
     aspect-ratio: 4 / 3;
@@ -175,16 +179,22 @@
     color: #c3c8cf;
     font-size: 32px;
   }
-  .card .body {
+  .card .caption {
     padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card .caption.muted { color: var(--muted); font-weight: 400; }
+  .card .body {
+    padding: 0 12px 10px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    justify-content: flex-end;
+    gap: 2px;
   }
-  .card .name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .card .text { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
-  .card .answer { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card .del {
     background: none;
     border: none;
@@ -1095,29 +1105,38 @@
     cards.forEach((c) => {
       const el = document.createElement('div');
       el.className = 'card';
-      const thumb = c.image
+      const frontThumb = c.image
         ? `<img class="thumb" src="/uploads/${c.image}" alt="${escapeHtml(c.name)}" loading="lazy">`
         : `<div class="thumb placeholder">&#128203;</div>`;
+      const backThumb = c.image_back
+        ? `<img class="thumb" src="/uploads/${c.image_back}" alt="${escapeHtml(c.answer || c.name)}" loading="lazy">`
+        : `<div class="thumb placeholder">&#128203;</div>`;
+      const backCaption = c.answer
+        ? `<div class="caption" title="${escapeHtml(c.answer)}">${escapeHtml(c.answer)}</div>`
+        : `<div class="caption muted">(no answer)</div>`;
       const transfer = decks.length > 1
         ? `<button class="move" title="Move">&#8644;</button>
            <button class="copy" title="Copy">&#10697;</button>`
         : '';
-      const answerLine = c.answer
-        ? `<span class="answer" title="${escapeHtml(c.answer)}">${escapeHtml(c.answer)}</span>`
-        : '';
       el.innerHTML = `
-        ${thumb}
+        <div class="face front">
+          ${frontThumb}
+          <div class="caption" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</div>
+        </div>
+        <div class="face back">
+          ${backThumb}
+          ${backCaption}
+        </div>
         <div class="body">
-          <span class="text">
-            <span class="name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
-            ${answerLine}
-          </span>
           <span class="actions">
             <button class="edit" title="Edit">&#9998;</button>
             ${transfer}
             <button class="del" title="Delete">&times;</button>
           </span>
         </div>`;
+      const flip = () => el.classList.toggle('flipped');
+      el.querySelector('.face.front').addEventListener('click', flip);
+      el.querySelector('.face.back').addEventListener('click', flip);
       el.querySelector('.edit').addEventListener('click', () => openEdit(c.id));
       el.querySelector('.del').addEventListener('click', () => deleteCard(c.id));
       const moveBtn = el.querySelector('.move');
