@@ -188,6 +188,38 @@
     white-space: nowrap;
   }
   .card .caption.muted { color: var(--muted); font-weight: 400; }
+  #tag-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip .count { margin-left: 5px; opacity: 0.6; }
+  .card-tags {
+    padding: 0 12px 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .card-tags:empty { display: none; }
+  .mini-chip {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .mini-chip:hover { text-decoration: underline; }
   .card .body {
     padding: 0 12px 10px;
     display: flex;
@@ -647,6 +679,11 @@
           <span id="back-file-name">Back image (optional)…</span>
         </label>
       </div>
+      <div class="side-group">
+        <span class="side-label">Tags</span>
+        <input type="text" id="card-tags" placeholder="Tags (comma-separated, optional)" autocomplete="off" list="tag-suggestions">
+      </div>
+      <datalist id="tag-suggestions"></datalist>
       <button type="submit" id="submit-btn" disabled>Add card</button>
       <div id="suggestion" class="hidden">
         <img id="suggest-img" alt="">
@@ -660,6 +697,7 @@
         <button type="button" class="btn" id="find-another-btn">Find another</button>
       </div>
     </form>
+    <div id="tag-filter" class="hidden"></div>
     <div id="cards-grid" class="grid"></div>
   </section>
 
@@ -744,6 +782,8 @@
         <input type="checkbox" id="edit-remove-image-back">
         Remove back image
       </label>
+      <span class="modal-section">Tags</span>
+      <input type="text" id="edit-tags" placeholder="Tags (comma-separated, optional)" autocomplete="off" list="tag-suggestions">
       <div class="modal-actions">
         <button type="button" class="btn" id="edit-cancel-btn">Cancel</button>
         <button type="button" class="primary" id="edit-save-btn">Save</button>
@@ -827,7 +867,11 @@
   const backFileInput = $('card-image-back');
   const backFileLabel = $('back-file-label');
   const backFileName = $('back-file-name');
+  const tagInput = $('card-tags');
+  const editTagsInput = $('edit-tags');
   const submitBtn = $('submit-btn');
+
+  let activeTag = null;
 
   function updateSubmitState() {
     submitBtn.disabled = !nameInput.value.trim();
@@ -1025,6 +1069,7 @@
 
   $('deck-select').addEventListener('change', async () => {
     currentDeckId = Number($('deck-select').value);
+    activeTag = null;
     await loadCards();
   });
 
@@ -1095,14 +1140,56 @@
     renderGrid();
   }
 
+  function allTags() {
+    const counts = new Map();
+    for (const c of cards) for (const t of (c.tags || [])) counts.set(t, (counts.get(t) || 0) + 1);
+    return counts;
+  }
+
+  function updateTagDatalist() {
+    $('tag-suggestions').innerHTML = [...allTags().keys()].sort()
+      .map((t) => `<option value="${escapeHtml(t)}"></option>`).join('');
+  }
+
+  function renderTagFilter() {
+    const bar = $('tag-filter');
+    const counts = allTags();
+    if (!counts.size) {
+      activeTag = null;
+      bar.innerHTML = '';
+      bar.classList.add('hidden');
+      return;
+    }
+    if (activeTag && !counts.has(activeTag)) activeTag = null;
+    const chips = [`<span class="chip${activeTag ? '' : ' active'}" data-tag="">All</span>`];
+    for (const t of [...counts.keys()].sort()) {
+      chips.push(`<span class="chip${t === activeTag ? ' active' : ''}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}<span class="count">${counts.get(t)}</span></span>`);
+    }
+    bar.innerHTML = chips.join('');
+    bar.classList.remove('hidden');
+  }
+
+  $('tag-filter').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    activeTag = chip.dataset.tag || null;
+    renderTagFilter();
+    renderGrid();
+  });
+
   function renderGrid() {
+    renderTagFilter();
+    updateTagDatalist();
     const grid = $('cards-grid');
-    if (!cards.length) {
-      grid.innerHTML = '<div class="empty">No cards yet. Add your first one above.</div>';
+    const list = activeTag ? cards.filter((c) => (c.tags || []).includes(activeTag)) : cards;
+    if (!list.length) {
+      grid.innerHTML = activeTag
+        ? `<div class="empty">No cards tagged "${escapeHtml(activeTag)}".</div>`
+        : '<div class="empty">No cards yet. Add your first one above.</div>';
       return;
     }
     grid.innerHTML = '';
-    cards.forEach((c) => {
+    list.forEach((c) => {
       const el = document.createElement('div');
       el.className = 'card';
       const frontThumb = c.image
@@ -1114,6 +1201,9 @@
       const backCaption = c.answer
         ? `<div class="caption" title="${escapeHtml(c.answer)}">${escapeHtml(c.answer)}</div>`
         : `<div class="caption muted">(no answer)</div>`;
+      const tagsRow = (c.tags && c.tags.length)
+        ? `<div class="card-tags">${c.tags.map((t) => `<span class="mini-chip" data-tag="${escapeHtml(t)}" title="Filter by tag">${escapeHtml(t)}</span>`).join('')}</div>`
+        : '';
       const transfer = decks.length > 1
         ? `<button class="move" title="Move">&#8644;</button>
            <button class="copy" title="Copy">&#10697;</button>`
@@ -1127,6 +1217,7 @@
           ${backThumb}
           ${backCaption}
         </div>
+        ${tagsRow}
         <div class="body">
           <span class="actions">
             <button class="edit" title="Edit">&#9998;</button>
@@ -1137,6 +1228,15 @@
       const flip = () => el.classList.toggle('flipped');
       el.querySelector('.face.front').addEventListener('click', flip);
       el.querySelector('.face.back').addEventListener('click', flip);
+      const tagsEl = el.querySelector('.card-tags');
+      if (tagsEl) tagsEl.addEventListener('click', (e) => {
+        const chip = e.target.closest('.mini-chip');
+        if (!chip) return;
+        e.stopPropagation();
+        activeTag = chip.dataset.tag;
+        renderTagFilter();
+        renderGrid();
+      });
       el.querySelector('.edit').addEventListener('click', () => openEdit(c.id));
       el.querySelector('.del').addEventListener('click', () => deleteCard(c.id));
       const moveBtn = el.querySelector('.move');
@@ -1169,6 +1269,7 @@
     const fd = new FormData();
     fd.append('name', name);
     fd.append('answer', answerInput.value.trim());
+    fd.append('tags', tagInput.value.trim());
     fd.append('deck_id', currentDeckId);
     if (fileInput.files[0]) {
       fd.append('image', fileInput.files[0]);
@@ -1191,6 +1292,7 @@
       showToast(card.image_source === 'suggested' ? 'Added with suggested image' : 'Card added');
       nameInput.value = '';
       answerInput.value = '';
+      tagInput.value = '';
       fileInput.value = '';
       fileName.textContent = 'Front image (optional)…';
       fileLabel.classList.remove('has-file');
@@ -1366,6 +1468,7 @@
     editingId = id;
     editNameInput.value = card.name;
     editAnswerInput.value = card.answer || '';
+    editTagsInput.value = (card.tags || []).join(', ');
     editFileInput.value = '';
     editFileName.textContent = 'Front image (optional)…';
     editFileLabel.classList.remove('has-file');
@@ -1420,6 +1523,7 @@
     const fd = new FormData();
     fd.append('name', name);
     fd.append('answer', editAnswerInput.value.trim());
+    fd.append('tags', editTagsInput.value.trim());
     if (editFileInput.files[0]) {
       fd.append('image', editFileInput.files[0]);
     } else if ($('edit-use-suggest').checked && editSuggestImages.length) {

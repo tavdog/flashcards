@@ -70,6 +70,14 @@ db.exec(`
   }
 })();
 
+// Add tags to cards if missing (existing installs)
+(function addTags() {
+  const cols = db.prepare('PRAGMA table_info(cards)').all();
+  if (!cols.find((c) => c.name === 'tags')) {
+    db.exec('ALTER TABLE cards ADD COLUMN tags TEXT');
+  }
+})();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +151,28 @@ function searchQuery(raw) {
   return raw.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Tags are stored as a JSON array string. Input is comma-separated free text.
+function normalizeTags(raw) {
+  if (Array.isArray(raw)) raw = raw.join(',');
+  if (typeof raw !== 'string') return [];
+  const seen = new Set();
+  for (const part of raw.split(',')) {
+    const t = part.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 40);
+    if (t) seen.add(t);
+  }
+  return [...seen].slice(0, 20);
+}
+
+function parseTags(str) {
+  if (!str) return [];
+  try {
+    const arr = JSON.parse(str);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 async function searchImages(query) {
   try {
     const params = new URLSearchParams({
@@ -185,10 +215,117 @@ async function downloadImage(url) {
     const ext = MIME_EXT[contentType] || '.jpg';
     const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
     fs.writeFileSync(path.join(UPLOAD_DIR, filename), buf);
+    stripImageMetadata(path.join(UPLOAD_DIR, filename));
     return filename;
   } catch (e) {
     return null;
   }
+}
+
+// Strip privacy-sensitive metadata (EXIF/GPS, XMP, comments) from images.
+// Photos taken on phones carry GPS coordinates in EXIF; we remove all APPn
+// segments from JPEG, eXIf/text chunks from PNG, and EXIF/XMP chunks from WebP
+// without re-encoding pixels. All parsers fail-safe: unknown or malformed data
+// returns null and the original file is left untouched.
+
+function stripJpegMetadata(buf) {
+  if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  const out = [0xff, 0xd8];
+  let i = 2;
+  const n = buf.length;
+  while (i < n) {
+    if (buf[i] !== 0xff) return null;
+    while (i < n && buf[i] === 0xff) i++;
+    if (i >= n) return null;
+    const marker = buf[i++];
+    if (marker === 0xd9) { // EOI
+      out.push(0xff, 0xd9);
+      break;
+    }
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { // no payload
+      out.push(0xff, marker);
+      continue;
+    }
+    if (i + 2 > n) return null;
+    const len = (buf[i] << 8) | buf[i + 1];
+    if (len < 2 || i + len > n) return null;
+    if (marker === 0xda) { // SOS: copy header then entropy-coded data verbatim
+      out.push(0xff, marker);
+      for (let k = i; k < n; k++) out.push(buf[k]);
+      break;
+    }
+    const isMeta = (marker >= 0xe0 && marker <= 0xef) || marker === 0xfe; // APPn/COM
+    if (!isMeta) {
+      out.push(0xff, marker);
+      for (let k = i; k < i + len; k++) out.push(buf[k]);
+    }
+    i += len;
+  }
+  return Buffer.from(out);
+}
+
+function stripPngMetadata(buf) {
+  if (buf.length < 57) return null;
+  for (let k = 0; k < 8; k++) {
+    if (buf[k] !== [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][k]) return null;
+  }
+  const out = [];
+  for (let k = 0; k < 8; k++) out.push(buf[k]); // keep PNG signature
+  let i = 8; // skip PNG signature
+  while (i + 12 <= buf.length) {
+    const len = buf.readUInt32BE(i);
+    const type = buf.toString('latin1', i + 4, i + 8);
+    const total = 12 + len;
+    if (len > 0x7fffffff || i + total > buf.length) return null;
+    if (type === 'IHDR' && out.length === 0) {
+      for (let k = i; k < i + total; k++) out.push(buf[k]);
+    } else if (type !== 'eXIf' && type !== 'tEXt' && type !== 'zTXt' && type !== 'iTXt') {
+      for (let k = i; k < i + total; k++) out.push(buf[k]);
+    }
+    i += total;
+    if (type === 'IEND') break;
+  }
+  return out.length ? Buffer.from(out) : null;
+}
+
+function stripWebpMetadata(buf) {
+  if (buf.length < 30) return null;
+  if (buf.toString('latin1', 0, 4) !== 'RIFF' || buf.toString('latin1', 8, 12) !== 'WEBP') return null;
+  const out = [];
+  for (let k = 0; k < 12; k++) out.push(buf[k]); // keep RIFF/WEBP header
+  let i = 12;
+  while (i + 8 <= buf.length) {
+    const type = buf.toString('latin1', i, i + 4);
+    const size = buf.readUInt32LE(i + 4);
+    const padded = size + (size & 1);
+    if (i + 8 + size > buf.length) return null;
+    if (type !== 'EXIF' && type !== 'XMP ') {
+      for (let k = i; k < i + 8 + size; k++) out.push(buf[k]);
+    }
+    i += 8 + padded;
+  }
+  return out.length ? Buffer.from(out) : null;
+}
+
+function stripMetadataBuffer(buf) {
+  if (!buf || !buf.length) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8) return stripJpegMetadata(buf);
+  if (buf[0] === 0x89 && buf[1] === 0x50) return stripPngMetadata(buf);
+  if (buf.toString('latin1', 0, 4) === 'RIFF') return stripWebpMetadata(buf);
+  return null;
+}
+
+function stripImageMetadata(filePath) {
+  try {
+    const before = fs.readFileSync(filePath);
+    const stripped = stripMetadataBuffer(before);
+    // Only rewrite when we positively removed bytes; never risk corrupting a file.
+    if (stripped && stripped.length > 0 && stripped.length < before.length) {
+      fs.writeFileSync(filePath, stripped);
+      return true;
+    }
+  } catch (e) {}
+  return false;
 }
 
 function hashPassword(password) {
@@ -392,11 +529,11 @@ app.post('/api/decks/:id/copy', requireAuth, (req, res) => {
   }
   const info = db.prepare('INSERT INTO decks (name, user_id, is_public) VALUES (?, ?, 0)').run(access.deck.name, req.user.id);
   const newDeckId = info.lastInsertRowid;
-  const cards = db.prepare('SELECT name, answer, image, image_back FROM cards WHERE deck_id = ?').all(access.deck.id);
+  const cards = db.prepare('SELECT name, answer, tags, image, image_back FROM cards WHERE deck_id = ?').all(access.deck.id);
   for (const c of cards) {
     const image = copyImageFile(c.image);
     const imageBack = copyImageFile(c.image_back);
-    db.prepare('INSERT INTO cards (name, answer, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?)').run(c.name, c.answer, image, imageBack, req.user.id, newDeckId);
+    db.prepare('INSERT INTO cards (name, answer, tags, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(c.name, c.answer, c.tags, image, imageBack, req.user.id, newDeckId);
   }
   const deck = db.prepare('SELECT id, name, is_public, created_at FROM decks WHERE id = ?').get(newDeckId);
   res.status(201).json(deck);
@@ -410,7 +547,8 @@ app.get('/api/cards', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'Deck not found' });
   }
   const order = req.query.order === 'random' ? 'ORDER BY RANDOM()' : 'ORDER BY id ASC';
-  const cards = db.prepare(`SELECT id, name, answer, image, image_back, created_at FROM cards WHERE deck_id = ? ${order}`).all(deckId);
+  const cards = db.prepare(`SELECT id, name, answer, tags, image, image_back, created_at FROM cards WHERE deck_id = ? ${order}`).all(deckId);
+  for (const c of cards) c.tags = parseTags(c.tags);
   res.json(cards);
 });
 
@@ -440,6 +578,7 @@ app.post('/api/cards', requireAuth, (req, res) => {
       let imageSource = 'none';
       if (req.files && req.files.image && req.files.image[0]) {
         image = req.files.image[0].filename;
+        stripImageMetadata(path.join(UPLOAD_DIR, image));
         imageSource = 'upload';
       } else {
         const url = (req.body.suggest_url || '').trim();
@@ -453,9 +592,13 @@ app.post('/api/cards', requireAuth, (req, res) => {
       }
 
       const imageBack = (req.files && req.files.image_back && req.files.image_back[0]) ? req.files.image_back[0].filename : null;
+      if (imageBack) stripImageMetadata(path.join(UPLOAD_DIR, imageBack));
 
-      const info = db.prepare('INSERT INTO cards (name, answer, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?)').run(name, answer, image, imageBack, req.user.id, deckId);
-      const card = db.prepare('SELECT id, name, answer, image, image_back, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
+      const tags = JSON.stringify(normalizeTags(req.body.tags));
+
+      const info = db.prepare('INSERT INTO cards (name, answer, tags, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(name, answer, tags, image, imageBack, req.user.id, deckId);
+      const card = db.prepare('SELECT id, name, answer, tags, image, image_back, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
+      card.tags = parseTags(card.tags);
       card.image_source = imageSource;
       res.status(201).json(card);
     } catch (e) {
@@ -468,7 +611,7 @@ app.put('/api/cards/:id', requireAuth, (req, res) => {
   upload.fields([{ name: 'image', maxCount: 1 }, { name: 'image_back', maxCount: 1 }])(req, res, async (err) => {
     try {
       if (err) return res.status(400).json({ error: err.message });
-      const existing = db.prepare('SELECT id, name, answer, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      const existing = db.prepare('SELECT id, name, answer, tags, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
       if (!existing) return res.status(404).json({ error: 'Card not found' });
 
       const rawName = (req.body.name || '').trim();
@@ -483,6 +626,7 @@ app.put('/api/cards/:id', requireAuth, (req, res) => {
       if (req.files && req.files.image && req.files.image[0]) {
         if (existing.image) fs.unlink(path.join(UPLOAD_DIR, existing.image), () => {});
         image = req.files.image[0].filename;
+        stripImageMetadata(path.join(UPLOAD_DIR, image));
         imageSource = 'upload';
       } else {
         const url = (req.body.suggest_url || '').trim();
@@ -504,13 +648,19 @@ app.put('/api/cards/:id', requireAuth, (req, res) => {
       if (req.files && req.files.image_back && req.files.image_back[0]) {
         if (existing.image_back) fs.unlink(path.join(UPLOAD_DIR, existing.image_back), () => {});
         imageBack = req.files.image_back[0].filename;
+        stripImageMetadata(path.join(UPLOAD_DIR, imageBack));
       } else if (req.body.remove_image_back === 'true') {
         if (existing.image_back) fs.unlink(path.join(UPLOAD_DIR, existing.image_back), () => {});
         imageBack = null;
       }
 
-      db.prepare('UPDATE cards SET name = ?, answer = ?, image = ?, image_back = ? WHERE id = ? AND user_id = ?').run(name, answer, image, imageBack, req.params.id, req.user.id);
-      const card = db.prepare('SELECT id, name, answer, image, image_back, created_at FROM cards WHERE id = ?').get(req.params.id);
+      const tags = req.body.tags === undefined
+        ? String(existing.tags || '[]')
+        : JSON.stringify(normalizeTags(req.body.tags));
+
+      db.prepare('UPDATE cards SET name = ?, answer = ?, tags = ?, image = ?, image_back = ? WHERE id = ? AND user_id = ?').run(name, answer, tags, image, imageBack, req.params.id, req.user.id);
+      const card = db.prepare('SELECT id, name, answer, tags, image, image_back, created_at FROM cards WHERE id = ?').get(req.params.id);
+      card.tags = parseTags(card.tags);
       card.image_source = imageSource;
       res.json(card);
     } catch (e) {
@@ -540,7 +690,7 @@ app.post('/api/cards/:id/move', requireAuth, (req, res) => {
 });
 
 app.post('/api/cards/:id/copy', requireAuth, (req, res) => {
-  const card = db.prepare('SELECT id, name, answer, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  const card = db.prepare('SELECT id, name, answer, tags, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!card) return res.status(404).json({ error: 'Card not found' });
   const deckId = Number(req.body.deck_id);
   if (!deckId) return res.status(400).json({ error: 'deck_id is required' });
@@ -548,8 +698,9 @@ app.post('/api/cards/:id/copy', requireAuth, (req, res) => {
   if (!access || !access.isOwner) return res.status(404).json({ error: 'Deck not found' });
   const image = copyImageFile(card.image);
   const imageBack = copyImageFile(card.image_back);
-  const info = db.prepare('INSERT INTO cards (name, answer, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?)').run(card.name, card.answer, image, imageBack, req.user.id, deckId);
-  const newCard = db.prepare('SELECT id, name, answer, image, image_back, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
+  const info = db.prepare('INSERT INTO cards (name, answer, tags, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(card.name, card.answer, card.tags, image, imageBack, req.user.id, deckId);
+  const newCard = db.prepare('SELECT id, name, answer, tags, image, image_back, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
+  newCard.tags = parseTags(newCard.tags);
   res.status(201).json(newCard);
 });
 

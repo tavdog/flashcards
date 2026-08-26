@@ -13,6 +13,12 @@ to browse and copy, and move or copy individual cards between your own decks.
 - **Cards** — each card has a front (name) and a back (answer), with an optional
   uploaded image on either side (or an automatically suggested front image from
   Wikimedia Commons). Edit or delete cards.
+- **Tags** — add comma-separated tags to cards; filter the current deck by tag
+  with one click, and get autocomplete suggestions from existing tags.
+- **Privacy-safe uploads** — uploaded images are scanned for metadata
+  (EXIF/GPS location, comments, XMP in JPEG, PNG, and WebP files) and it is
+  stripped before storage, so photos taken on a phone never leak location data.
+  Files that can't be parsed are left untouched rather than corrupted.
 - **Decks** — keep cards in multiple named decks. Each deck can be **public** or
   **private**.
 - **Sharing** — browse other users' public decks, view their cards, study them,
@@ -77,8 +83,8 @@ The production setup runs the app behind Apache and keeps it alive with systemd:
 | GET    | `/api/public-decks`      | List public decks                           |
 | POST   | `/api/decks/:id/copy`    | Copy a public deck into your account        |
 | GET    | `/api/cards?deck_id=X`   | List a deck's cards                         |
-| POST   | `/api/cards`             | Add a card (name + answer, optional front/back images) |
-| PUT    | `/api/cards/:id`         | Edit a card (front/back)                    |
+| POST   | `/api/cards`             | Add a card (name + answer, optional front/back images, tags) |
+| PUT    | `/api/cards/:id`         | Edit a card (front/back/tags)               |
 | DELETE | `/api/cards/:id`         | Delete a card                               |
 | POST   | `/api/cards/:id/move`    | Move a card to another of your decks        |
 | POST   | `/api/cards/:id/copy`    | Copy a card to another of your decks        |
