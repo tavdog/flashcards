@@ -113,6 +113,18 @@ db.exec(`
   }
 })();
 
+// Admin: is_admin column, and the first registered user is the admin
+(function addIsAdmin() {
+  const cols = db.prepare('PRAGMA table_info(users)').all();
+  if (!cols.find((c) => c.name === 'is_admin')) {
+    db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+  }
+  const hasAdmin = db.prepare('SELECT id FROM users WHERE is_admin = 1 LIMIT 1').get();
+  if (!hasAdmin) {
+    db.prepare('UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)').run();
+  }
+})();
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
@@ -374,12 +386,20 @@ function getSessionUser(req) {
   if (!token) return null;
   const sess = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?').get(token);
   if (!sess || new Date(sess.expires_at) <= new Date()) return null;
-  return db.prepare('SELECT id, username FROM users WHERE id = ?').get(sess.user_id) || null;
+  return db.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(sess.user_id) || null;
 }
 
 function requireAuth(req, res, next) {
   const user = getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  req.user = user;
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  if (!user.is_admin) return res.status(403).json({ error: 'Admin access required' });
   req.user = user;
   next();
 }
@@ -430,6 +450,7 @@ app.post('/api/register', (req, res) => {
 
   if (isFirst) {
     db.prepare('UPDATE cards SET user_id = ?, deck_id = ? WHERE user_id IS NULL').run(userId, deckId);
+    db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(userId);
   }
 
   startSession(res, userId);
@@ -456,6 +477,17 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   res.json({ user: getSessionUser(req) });
+});
+
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const users = db.prepare(`
+    SELECT u.id, u.username, u.created_at, u.is_admin,
+      (SELECT COUNT(*) FROM decks d WHERE d.user_id = u.id) AS deck_count,
+      (SELECT COUNT(*) FROM cards c WHERE c.user_id = u.id) AS card_count
+    FROM users u
+    ORDER BY u.id ASC
+  `).all();
+  res.json(users);
 });
 
 app.get('/api/decks', requireAuth, (req, res) => {
