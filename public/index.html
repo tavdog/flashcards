@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flash Cards</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e3e6ea;
+    --text: #1a1d21;
+    --muted: #6b7280;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --danger: #dc2626;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 20px; margin: 0; font-weight: 650; }
+  nav { display: flex; gap: 8px; }
+  nav button {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  nav button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 24px; }
+  .hidden { display: none !important; }
+
+  /* Manage view */
+  #upload-form {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+  }
+  #upload-form input[type="text"] {
+    flex: 1;
+    min-width: 160px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .file-label {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .file-label input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .file-label.has-file { border-style: solid; border-color: var(--accent); color: var(--accent); }
+  #upload-form button[type="submit"] {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #upload-form button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #suggestion {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--accent-soft);
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #suggestion img {
+    height: 56px;
+    width: 74px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #fff;
+    flex-shrink: 0;
+  }
+  #suggestion .suggest-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  #suggestion .suggest-info .toggle { font-size: 13px; color: var(--text); }
+  #find-another-btn { flex-shrink: 0; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+  }
+  .card .thumb {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: #eef0f3;
+    display: block;
+  }
+  .card .thumb.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c3c8cf;
+    font-size: 32px;
+  }
+  .card .body {
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .card .name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .del {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 1;
+  }
+  .card .del:hover { color: var(--danger); background: #fef2f2; }
+  .card .actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .card .edit {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 15px;
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 1;
+  }
+  .card .edit:hover { color: var(--accent); background: var(--accent-soft); }
+  .card .move,
+  .card .copy {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 15px;
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 1;
+  }
+  .card .move:hover,
+  .card .copy:hover { color: var(--accent); background: var(--accent-soft); }
+  .empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--muted);
+    padding: 48px 0;
+    font-size: 15px;
+  }
+
+  /* Study view */
+  .study-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    user-select: none;
+  }
+  .toggle input { width: 16px; height: 16px; cursor: pointer; }
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .btn:hover { background: var(--accent-soft); }
+  #progress { margin-left: auto; color: var(--muted); font-size: 14px; }
+
+  .study-stage {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .nav-arrow {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 22px;
+    cursor: pointer;
+    flex-shrink: 0;
+    color: var(--text);
+  }
+  .nav-arrow:hover { background: var(--accent-soft); }
+  .nav-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
+  #study-card {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    text-align: center;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #study-card img {
+    max-width: 100%;
+    max-height: 420px;
+    object-fit: contain;
+    border-radius: 8px;
+  }
+  #study-name {
+    margin-top: 16px;
+    font-size: 22px;
+    font-weight: 650;
+  }
+  #study-empty { color: var(--muted); font-size: 15px; }
+
+  /* Auth */
+  #auth-view {
+    max-width: 360px;
+    margin: 40px auto;
+  }
+  .auth-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .auth-card h2 { margin: 0; font-size: 18px; font-weight: 650; }
+  .auth-card input {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .auth-card button[type="submit"] {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .auth-card button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+  .auth-card .auth-error { color: var(--danger); font-size: 13px; }
+  .auth-card .auth-switch { font-size: 13px; color: var(--muted); margin: 0; }
+  .auth-card .auth-switch a { color: var(--accent); cursor: pointer; text-decoration: none; }
+
+  #user-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #user-box span { font-size: 14px; font-weight: 500; color: var(--muted); }
+
+  /* Decks */
+  #deck-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  #deck-toolbar select {
+    flex: 1;
+    min-width: 160px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--panel);
+    color: var(--text);
+  }
+  #study-deck-select {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--panel);
+    color: var(--text);
+  }
+  #study-banner {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: var(--accent-soft);
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #browse-view h2 { margin: 0 0 16px; font-size: 18px; font-weight: 650; }
+  .deck-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .deck-item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .deck-item .deck-name { font-size: 15px; font-weight: 600; word-break: break-word; }
+  .deck-item .deck-meta { font-size: 13px; color: var(--muted); }
+  .deck-item .deck-actions { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  .deck-item .badge {
+    align-self: flex-start;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .public-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 2px;
+  }
+  .public-cards .pc-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .public-cards .pc-item img,
+  .public-cards .pc-ph {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #eef0f3;
+  }
+  .public-cards .pc-ph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c3c8cf;
+    font-size: 24px;
+  }
+  .public-cards .pc-item span {
+    font-size: 12px;
+    color: var(--text);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  /* Edit modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 24px;
+  }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.25);
+    padding: 20px;
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .modal h2 { margin: 0; font-size: 18px; font-weight: 650; }
+  .modal input[type="text"] {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    width: 100%;
+  }
+  .modal .current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .modal .current img {
+    height: 56px;
+    width: 74px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .modal .suggestion {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--accent-soft);
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .modal .suggestion img {
+    height: 56px;
+    width: 74px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #fff;
+    flex-shrink: 0;
+  }
+  .modal .suggestion .suggest-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .modal-actions .primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .modal-actions .primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  #move-card-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    word-break: break-word;
+  }
+  #move-deck-select {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--panel);
+    color: var(--text);
+    width: 100%;
+  }
+
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #111827;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 50;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Flash Cards</h1>
+  <nav id="main-nav" class="hidden">
+    <button data-tab="manage" class="active">Manage</button>
+    <button data-tab="study">Study</button>
+    <button data-tab="browse">Browse</button>
+  </nav>
+  <div id="user-box" class="hidden">
+    <span id="user-name"></span>
+    <button class="btn" id="logout-btn">Log out</button>
+  </div>
+</header>
+
+<main>
+  <section id="auth-view">
+    <form id="auth-form" class="auth-card">
+      <h2 id="auth-title">Log in</h2>
+      <input type="text" id="auth-username" placeholder="Username" autocomplete="username">
+      <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password">
+      <div id="auth-error" class="auth-error hidden"></div>
+      <button type="submit" id="auth-submit-btn">Log in</button>
+      <p class="auth-switch"><a href="#" id="auth-switch-link">No account? Register</a></p>
+    </form>
+  </section>
+
+  <div id="app-view" class="hidden">
+  <section id="manage-view">
+    <div id="deck-toolbar">
+      <select id="deck-select"></select>
+      <button type="button" class="btn" id="new-deck-btn">New deck</button>
+      <button type="button" class="btn" id="edit-deck-btn">Edit</button>
+      <button type="button" class="btn" id="delete-deck-btn">Delete</button>
+    </div>
+    <form id="upload-form">
+      <input type="text" id="card-name" placeholder="Name" autocomplete="off">
+      <label class="file-label" id="file-label">
+        <input type="file" id="card-image" accept="image/*">
+        <span id="file-name">Choose image (optional)…</span>
+      </label>
+      <button type="submit" id="submit-btn" disabled>Add card</button>
+      <div id="suggestion" class="hidden">
+        <img id="suggest-img" alt="">
+        <div class="suggest-info">
+          <span id="suggest-text"></span>
+          <label class="toggle">
+            <input type="checkbox" id="use-suggest">
+            Use this image
+          </label>
+        </div>
+        <button type="button" class="btn" id="find-another-btn">Find another</button>
+      </div>
+    </form>
+    <div id="cards-grid" class="grid"></div>
+  </section>
+
+  <section id="study-view" class="hidden">
+    <div class="study-controls">
+      <select id="study-deck-select"></select>
+      <label class="toggle">
+        <input type="checkbox" id="shuffle-toggle">
+        Random order
+      </label>
+      <button class="btn" id="reshuffle-btn">Shuffle</button>
+      <span id="progress"></span>
+    </div>
+    <div id="study-banner" class="hidden"></div>
+    <div class="study-stage">
+      <button class="nav-arrow" id="prev-btn">&#8249;</button>
+      <div id="study-card">
+        <div id="study-empty">No cards yet. Add some in Manage first.</div>
+        <img id="study-image" alt="" class="hidden">
+        <div id="study-name" class="hidden"></div>
+      </div>
+      <button class="nav-arrow" id="next-btn">&#8250;</button>
+    </div>
+  </section>
+
+  <section id="browse-view" class="hidden">
+    <h2>Public decks</h2>
+    <div id="public-decks-list" class="deck-list"></div>
+  </section>
+  </div>
+</main>
+
+<div id="edit-modal" class="hidden">
+  <div class="modal-overlay" id="edit-overlay">
+    <div class="modal">
+      <h2>Edit card</h2>
+      <input type="text" id="edit-name" placeholder="Name" autocomplete="off">
+      <div class="current">
+        <span>Current image:</span>
+        <img id="edit-current-img" alt="" class="hidden">
+        <span id="edit-no-img" class="hidden">None</span>
+      </div>
+      <label class="file-label" id="edit-file-label">
+        <input type="file" id="edit-image" accept="image/*">
+        <span id="edit-file-name">Choose new image (optional)…</span>
+      </label>
+      <div id="edit-suggestion" class="suggestion hidden">
+        <img id="edit-suggest-img" alt="">
+        <div class="suggest-info">
+          <span id="edit-suggest-text"></span>
+          <label class="toggle">
+            <input type="checkbox" id="edit-use-suggest">
+            Use this image
+          </label>
+        </div>
+        <button type="button" class="btn" id="edit-find-another-btn">Find another</button>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="edit-remove-image">
+        Remove image
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="edit-cancel-btn">Cancel</button>
+        <button type="button" class="primary" id="edit-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="deck-modal" class="hidden">
+  <div class="modal-overlay" id="deck-overlay">
+    <div class="modal">
+      <h2 id="deck-modal-title">New deck</h2>
+      <input type="text" id="deck-name" placeholder="Deck name" autocomplete="off">
+      <label class="toggle"><input type="checkbox" id="deck-public"> Make this deck public</label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="deck-cancel-btn">Cancel</button>
+        <button type="button" class="primary" id="deck-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="public-deck-modal" class="hidden">
+  <div class="modal-overlay" id="public-deck-overlay">
+    <div class="modal">
+      <h2 id="public-deck-title">Deck</h2>
+      <div id="public-deck-cards" class="public-cards"></div>
+      <div class="modal-actions"><button type="button" class="btn" id="public-deck-close-btn">Close</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="move-modal" class="hidden">
+  <div class="modal-overlay" id="move-overlay">
+    <div class="modal">
+      <h2 id="move-modal-title">Move card</h2>
+      <div id="move-card-label"></div>
+      <select id="move-deck-select"></select>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="move-cancel-btn">Cancel</button>
+        <button type="button" class="primary" id="move-save-btn">Move</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  let currentUser = null;
+
+  async function apiFetch(url, opts) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) { showAuth(); throw new Error('Not authenticated'); }
+    return res;
+  }
+
+  let cards = [];
+  let studyList = [];
+  let studyIndex = 0;
+  let suggestImages = [];
+  let suggestIndex = 0;
+
+  let decks = [];
+  let currentDeckId = null;
+  let studyCards = [];
+  let studyDeck = null;
+  let publicDecks = [];
+  let editingDeckId = null;
+  let moveCardId = null;
+  let moveMode = null;
+
+  const nameInput = $('card-name');
+  const fileInput = $('card-image');
+  const fileLabel = $('file-label');
+  const fileName = $('file-name');
+  const submitBtn = $('submit-btn');
+
+  function updateSubmitState() {
+    submitBtn.disabled = !nameInput.value.trim();
+  }
+  nameInput.addEventListener('input', updateSubmitState);
+
+  // ---- Image suggestion (debounced) ----
+  let suggestTimer = null;
+  nameInput.addEventListener('input', () => {
+    clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(fetchSuggestion, 400);
+  });
+
+  fileInput.addEventListener('change', () => {
+    fileName.textContent = fileInput.files.length ? fileInput.files[0].name : 'Choose image (optional)…';
+    fileLabel.classList.toggle('has-file', !!fileInput.files.length);
+    updateSubmitState();
+    if (fileInput.files.length) hideSuggestion();
+    else fetchSuggestion();
+  });
+
+  async function fetchSuggestion() {
+    const name = nameInput.value.trim();
+    if (!name || fileInput.files.length) { hideSuggestion(); return; }
+    try {
+      const res = await apiFetch('/api/suggest-image?q=' + encodeURIComponent(name));
+      const data = await res.json();
+      if (data.images && data.images.length) {
+        suggestImages = data.images;
+        suggestIndex = 0;
+        renderSuggestion();
+      } else {
+        hideSuggestion();
+      }
+    } catch (e) {
+      hideSuggestion();
+    }
+  }
+
+  function renderSuggestion() {
+    const name = nameInput.value.trim();
+    if (!suggestImages.length) { hideSuggestion(); return; }
+    $('suggest-img').src = suggestImages[suggestIndex].url;
+    $('suggest-text').textContent = 'Suggested image ' + (suggestIndex + 1) + '/' + suggestImages.length + ' for "' + name + '"';
+    $('suggestion').classList.remove('hidden');
+  }
+  function hideSuggestion() {
+    suggestImages = [];
+    suggestIndex = 0;
+    $('use-suggest').checked = false;
+    $('suggest-img').removeAttribute('src');
+    $('suggestion').classList.add('hidden');
+  }
+
+  $('find-another-btn').addEventListener('click', () => {
+    if (!suggestImages.length) return;
+    suggestIndex = (suggestIndex + 1) % suggestImages.length;
+    renderSuggestion();
+  });
+
+  // ---- Auth ----
+  let authMode = 'login';
+
+  function showAuth() {
+    currentUser = null;
+    $('auth-view').classList.remove('hidden');
+    $('app-view').classList.add('hidden');
+    $('main-nav').classList.add('hidden');
+    $('user-box').classList.add('hidden');
+  }
+
+  function showApp(user) {
+    currentUser = user;
+    $('user-name').textContent = user.username;
+    $('auth-view').classList.add('hidden');
+    $('app-view').classList.remove('hidden');
+    $('main-nav').classList.remove('hidden');
+    $('user-box').classList.remove('hidden');
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    $('auth-title').textContent = mode === 'login' ? 'Log in' : 'Register';
+    $('auth-submit-btn').textContent = mode === 'login' ? 'Log in' : 'Register';
+    $('auth-switch-link').textContent = mode === 'login' ? 'No account? Register' : 'Have an account? Log in';
+    $('auth-password').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+    $('auth-error').textContent = '';
+    $('auth-error').classList.add('hidden');
+  }
+
+  $('auth-switch-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    setAuthMode(authMode === 'login' ? 'register' : 'login');
+  });
+
+  $('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = $('auth-username').value.trim();
+    const password = $('auth-password').value;
+    const errEl = $('auth-error');
+    const btn = $('auth-submit-btn');
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/' + authMode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Something went wrong';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      $('auth-password').value = '';
+      showApp(data.user);
+      await bootstrap();
+    } catch (err) {
+      errEl.textContent = 'Request failed: ' + err.message;
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('logout-btn').addEventListener('click', async () => {
+    try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
+    cards = [];
+    decks = [];
+    currentDeckId = null;
+    studyCards = [];
+    studyDeck = null;
+    publicDecks = [];
+    showAuth();
+  });
+
+  async function init() {
+    try {
+      const res = await fetch('/api/me');
+      const data = await res.json();
+      if (data.user) {
+        showApp(data.user);
+        await bootstrap();
+      } else {
+        showAuth();
+      }
+    } catch (e) {
+      showAuth();
+    }
+  }
+
+  async function bootstrap() {
+    await loadDecks();
+    await loadCards();
+    await loadStudyCards();
+  }
+
+  // ---- Decks ----
+  async function loadDecks() {
+    const res = await apiFetch('/api/decks');
+    decks = await res.json();
+    if (!decks.length) { currentDeckId = null; }
+    else if (!currentDeckId || !decks.some((d) => d.id === currentDeckId)) {
+      currentDeckId = decks[0].id;
+    }
+    if (!studyDeck) {
+      const first = decks[0];
+      if (first) studyDeck = { id: first.id, name: first.name, owner: currentUser.username, is_owner: true };
+    }
+    renderDeckSelects();
+  }
+
+  function renderDeckSelects() {
+    const opts = decks.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}${d.is_public ? ' (public)' : ''}</option>`).join('');
+    const manageSelect = $('deck-select');
+    const studySelect = $('study-deck-select');
+    manageSelect.innerHTML = opts;
+    studySelect.innerHTML = opts;
+    manageSelect.value = currentDeckId || '';
+    $('delete-deck-btn').disabled = decks.length <= 1;
+    if (studyDeck && studyDeck.is_owner) {
+      const match = decks.find((d) => d.id === studyDeck.id);
+      if (match) studySelect.value = studyDeck.id;
+      else studySelect.value = decks[0] ? decks[0].id : '';
+    } else {
+      studySelect.value = '';
+    }
+  }
+
+  $('deck-select').addEventListener('change', async () => {
+    currentDeckId = Number($('deck-select').value);
+    await loadCards();
+  });
+
+  function openDeckModal(deck) {
+    editingDeckId = deck ? deck.id : null;
+    $('deck-modal-title').textContent = deck ? 'Edit deck' : 'New deck';
+    $('deck-name').value = deck ? deck.name : '';
+    $('deck-public').checked = deck ? !!deck.is_public : false;
+    $('deck-modal').classList.remove('hidden');
+  }
+
+  function closeDeckModal() {
+    editingDeckId = null;
+    $('deck-modal').classList.add('hidden');
+  }
+
+  $('new-deck-btn').addEventListener('click', () => openDeckModal(null));
+  $('edit-deck-btn').addEventListener('click', () => {
+    const deck = decks.find((d) => d.id === currentDeckId);
+    if (deck) openDeckModal(deck);
+  });
+  $('deck-cancel-btn').addEventListener('click', closeDeckModal);
+  $('deck-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDeckModal(); });
+
+  $('deck-save-btn').addEventListener('click', async () => {
+    const name = $('deck-name').value.trim();
+    if (!name) return;
+    const isPublic = $('deck-public').checked;
+    const wasEdit = editingDeckId != null;
+    const url = wasEdit ? '/api/decks/' + editingDeckId : '/api/decks';
+    const method = wasEdit ? 'PUT' : 'POST';
+    const res = await apiFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, is_public: isPublic })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Save failed');
+      return;
+    }
+    closeDeckModal();
+    showToast(wasEdit ? 'Deck updated' : 'Deck created');
+    await loadDecks();
+    await loadCards();
+  });
+
+  $('delete-deck-btn').addEventListener('click', async () => {
+    const deck = decks.find((d) => d.id === currentDeckId);
+    if (!deck) return;
+    if (!confirm(`Delete deck "${deck.name}" and all its cards?`)) return;
+    const res = await apiFetch('/api/decks/' + deck.id, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Delete failed');
+      return;
+    }
+    showToast('Deck deleted');
+    await loadDecks();
+    await loadCards();
+  });
+
+  // ---- Cards ----
+  async function loadCards() {
+    if (!currentDeckId) { cards = []; renderGrid(); return; }
+    const res = await apiFetch('/api/cards?deck_id=' + currentDeckId);
+    cards = await res.json();
+    renderGrid();
+  }
+
+  function renderGrid() {
+    const grid = $('cards-grid');
+    if (!cards.length) {
+      grid.innerHTML = '<div class="empty">No cards yet. Add your first one above.</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    cards.forEach((c) => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      const thumb = c.image
+        ? `<img class="thumb" src="/uploads/${c.image}" alt="${escapeHtml(c.name)}" loading="lazy">`
+        : `<div class="thumb placeholder">&#128203;</div>`;
+      const transfer = decks.length > 1
+        ? `<button class="move" title="Move">&#8644;</button>
+           <button class="copy" title="Copy">&#10697;</button>`
+        : '';
+      el.innerHTML = `
+        ${thumb}
+        <div class="body">
+          <span class="name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
+          <span class="actions">
+            <button class="edit" title="Edit">&#9998;</button>
+            ${transfer}
+            <button class="del" title="Delete">&times;</button>
+          </span>
+        </div>`;
+      el.querySelector('.edit').addEventListener('click', () => openEdit(c.id));
+      el.querySelector('.del').addEventListener('click', () => deleteCard(c.id));
+      const moveBtn = el.querySelector('.move');
+      if (moveBtn) moveBtn.addEventListener('click', () => openMoveCopy(c.id, 'move'));
+      const copyBtn = el.querySelector('.copy');
+      if (copyBtn) copyBtn.addEventListener('click', () => openMoveCopy(c.id, 'copy'));
+      grid.appendChild(el);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.add('hidden'), 2500);
+  }
+
+  $('upload-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('deck_id', currentDeckId);
+    if (fileInput.files[0]) {
+      fd.append('image', fileInput.files[0]);
+    } else if ($('use-suggest').checked && suggestImages.length) {
+      fd.append('suggest_url', suggestImages[suggestIndex].url);
+    }
+    submitBtn.disabled = true;
+    try {
+      const res = await apiFetch('/api/cards', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Upload failed');
+        submitBtn.disabled = false;
+        return;
+      }
+      const card = await res.json();
+      showToast(card.image_source === 'suggested' ? 'Added with suggested image' : 'Card added');
+      nameInput.value = '';
+      fileInput.value = '';
+      fileName.textContent = 'Choose image (optional)…';
+      fileLabel.classList.remove('has-file');
+      hideSuggestion();
+      updateSubmitState();
+      await loadCards();
+    } catch (err) {
+      alert('Request failed: ' + err.message);
+    } finally {
+      submitBtn.disabled = false;
+      updateSubmitState();
+    }
+  });
+
+  async function deleteCard(id) {
+    if (!confirm('Delete this card?')) return;
+    await apiFetch('/api/cards/' + id, { method: 'DELETE' });
+    await loadCards();
+    loadStudyCards();
+  }
+
+  // ---- Move / copy card ----
+  function openMoveCopy(id, mode) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    moveCardId = id;
+    moveMode = mode;
+    $('move-modal-title').textContent = mode === 'move' ? 'Move card' : 'Copy card';
+    $('move-save-btn').textContent = mode === 'move' ? 'Move' : 'Copy';
+    $('move-card-label').textContent = card.name;
+    const select = $('move-deck-select');
+    const targets = decks.filter((d) => d.id !== currentDeckId);
+    select.innerHTML = targets.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+    $('move-save-btn').disabled = targets.length === 0;
+    $('move-modal').classList.remove('hidden');
+  }
+
+  function closeMoveCopy() {
+    moveCardId = null;
+    moveMode = null;
+    $('move-modal').classList.add('hidden');
+  }
+
+  $('move-cancel-btn').addEventListener('click', closeMoveCopy);
+  $('move-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeMoveCopy(); });
+
+  $('move-save-btn').addEventListener('click', async () => {
+    if (moveCardId == null || moveMode == null) return;
+    const deckId = Number($('move-deck-select').value);
+    if (!deckId) return;
+    const mode = moveMode;
+    const res = await apiFetch('/api/cards/' + moveCardId + '/' + mode, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deck_id: deckId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Failed');
+      return;
+    }
+    closeMoveCopy();
+    showToast(mode === 'move' ? 'Card moved' : 'Card copied');
+    await loadCards();
+    loadStudyCards();
+  });
+
+  // ---- Edit card ----
+  let editingId = null;
+  let editSuggestImages = [];
+  let editSuggestIndex = 0;
+  let editSuggestTimer = null;
+
+  const editNameInput = $('edit-name');
+  const editFileInput = $('edit-image');
+  const editFileLabel = $('edit-file-label');
+  const editFileName = $('edit-file-name');
+  const editSaveBtn = $('edit-save-btn');
+
+  function updateEditSaveState() {
+    editSaveBtn.disabled = !editNameInput.value.trim();
+  }
+  editNameInput.addEventListener('input', updateEditSaveState);
+
+  editNameInput.addEventListener('input', () => {
+    clearTimeout(editSuggestTimer);
+    editSuggestTimer = setTimeout(editFetchSuggestion, 400);
+  });
+
+  editFileInput.addEventListener('change', () => {
+    editFileName.textContent = editFileInput.files.length ? editFileInput.files[0].name : 'Choose new image (optional)…';
+    editFileLabel.classList.toggle('has-file', !!editFileInput.files.length);
+    if (editFileInput.files.length) {
+      hideEditSuggestion();
+      $('edit-remove-image').checked = false;
+    } else {
+      editFetchSuggestion();
+    }
+  });
+
+  $('edit-remove-image').addEventListener('change', () => {
+    if ($('edit-remove-image').checked) {
+      editFileInput.value = '';
+      editFileName.textContent = 'Choose new image (optional)…';
+      editFileLabel.classList.remove('has-file');
+      hideEditSuggestion();
+    }
+  });
+
+  async function editFetchSuggestion() {
+    const name = editNameInput.value.trim();
+    if (!name || editFileInput.files.length || $('edit-remove-image').checked) { hideEditSuggestion(); return; }
+    try {
+      const res = await apiFetch('/api/suggest-image?q=' + encodeURIComponent(name));
+      const data = await res.json();
+      if (data.images && data.images.length) {
+        editSuggestImages = data.images;
+        editSuggestIndex = 0;
+        renderEditSuggestion();
+      } else {
+        hideEditSuggestion();
+      }
+    } catch (e) {
+      hideEditSuggestion();
+    }
+  }
+
+  function renderEditSuggestion() {
+    const name = editNameInput.value.trim();
+    if (!editSuggestImages.length) { hideEditSuggestion(); return; }
+    $('edit-suggest-img').src = editSuggestImages[editSuggestIndex].url;
+    $('edit-suggest-text').textContent = 'Suggested image ' + (editSuggestIndex + 1) + '/' + editSuggestImages.length + ' for "' + name + '"';
+    $('edit-suggestion').classList.remove('hidden');
+  }
+  function hideEditSuggestion() {
+    editSuggestImages = [];
+    editSuggestIndex = 0;
+    $('edit-use-suggest').checked = false;
+    $('edit-suggest-img').removeAttribute('src');
+    $('edit-suggestion').classList.add('hidden');
+  }
+
+  $('edit-find-another-btn').addEventListener('click', () => {
+    if (!editSuggestImages.length) return;
+    editSuggestIndex = (editSuggestIndex + 1) % editSuggestImages.length;
+    renderEditSuggestion();
+  });
+
+  function openEdit(id) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    editingId = id;
+    editNameInput.value = card.name;
+    editFileInput.value = '';
+    editFileName.textContent = 'Choose new image (optional)…';
+    editFileLabel.classList.remove('has-file');
+    hideEditSuggestion();
+    $('edit-remove-image').checked = false;
+    if (card.image) {
+      $('edit-current-img').src = '/uploads/' + card.image;
+      $('edit-current-img').classList.remove('hidden');
+      $('edit-no-img').classList.add('hidden');
+    } else {
+      $('edit-current-img').classList.add('hidden');
+      $('edit-current-img').removeAttribute('src');
+      $('edit-no-img').classList.remove('hidden');
+    }
+    updateEditSaveState();
+    $('edit-modal').classList.remove('hidden');
+  }
+
+  function closeEdit() {
+    editingId = null;
+    hideEditSuggestion();
+    $('edit-modal').classList.add('hidden');
+  }
+
+  $('edit-cancel-btn').addEventListener('click', closeEdit);
+  $('edit-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeEdit(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('edit-modal').classList.contains('hidden')) closeEdit();
+    if (!$('deck-modal').classList.contains('hidden')) closeDeckModal();
+    if (!$('public-deck-modal').classList.contains('hidden')) closePublicDeck();
+    if (!$('move-modal').classList.contains('hidden')) closeMoveCopy();
+  });
+
+  $('edit-save-btn').addEventListener('click', async () => {
+    if (editingId == null) return;
+    const name = editNameInput.value.trim();
+    if (!name) return;
+    const fd = new FormData();
+    fd.append('name', name);
+    if (editFileInput.files[0]) {
+      fd.append('image', editFileInput.files[0]);
+    } else if ($('edit-use-suggest').checked && editSuggestImages.length) {
+      fd.append('suggest_url', editSuggestImages[editSuggestIndex].url);
+    } else if ($('edit-remove-image').checked) {
+      fd.append('remove_image', 'true');
+    }
+    editSaveBtn.disabled = true;
+    try {
+      const res = await apiFetch('/api/cards/' + editingId, { method: 'PUT', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Save failed');
+        editSaveBtn.disabled = false;
+        return;
+      }
+      closeEdit();
+      showToast('Card updated');
+      await loadCards();
+      loadStudyCards();
+    } catch (err) {
+      alert('Request failed: ' + err.message);
+      editSaveBtn.disabled = false;
+    }
+  });
+
+  // ---- Study mode ----
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function resetStudy() {
+    studyList = $('shuffle-toggle').checked ? shuffle(studyCards) : studyCards.slice();
+    studyIndex = studyList.length ? 0 : -1;
+    renderStudy();
+  }
+
+  async function loadStudyCards() {
+    if (!studyDeck) { studyCards = []; updateStudyBanner(); resetStudy(); return; }
+    const res = await apiFetch('/api/cards?deck_id=' + studyDeck.id);
+    studyCards = await res.json();
+    updateStudyBanner();
+    resetStudy();
+  }
+
+  function updateStudyBanner() {
+    const banner = $('study-banner');
+    if (studyDeck && !studyDeck.is_owner) {
+      banner.textContent = `Studying public deck "${studyDeck.name}" by ${studyDeck.owner}`;
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+
+  $('study-deck-select').addEventListener('change', () => {
+    const id = Number($('study-deck-select').value);
+    const deck = decks.find((d) => d.id === id);
+    if (!deck) return;
+    studyDeck = { id: deck.id, name: deck.name, owner: currentUser.username, is_owner: true };
+    loadStudyCards();
+  });
+
+  function renderStudy() {
+    const hasCards = studyList.length > 0;
+    $('study-empty').classList.toggle('hidden', hasCards);
+    $('study-name').classList.toggle('hidden', !hasCards);
+    $('prev-btn').disabled = studyIndex <= 0;
+    $('next-btn').disabled = studyIndex >= studyList.length - 1;
+
+    if (!hasCards) {
+      $('study-image').classList.add('hidden');
+      $('progress').textContent = '0 / 0';
+      return;
+    }
+    const card = studyList[studyIndex];
+    if (card.image) {
+      $('study-image').src = '/uploads/' + card.image;
+      $('study-image').alt = card.name;
+      $('study-image').classList.remove('hidden');
+    } else {
+      $('study-image').classList.add('hidden');
+    }
+    $('study-name').textContent = card.name;
+    $('progress').textContent = `${studyIndex + 1} / ${studyList.length}`;
+  }
+
+  $('prev-btn').addEventListener('click', () => { if (studyIndex > 0) { studyIndex--; renderStudy(); } });
+  $('next-btn').addEventListener('click', () => { if (studyIndex < studyList.length - 1) { studyIndex++; renderStudy(); } });
+  $('shuffle-toggle').addEventListener('change', resetStudy);
+  $('reshuffle-btn').addEventListener('click', () => {
+    if ($('shuffle-toggle').checked) resetStudy();
+    else { studyList = shuffle(studyList); studyIndex = 0; renderStudy(); }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if ($('study-view').classList.contains('hidden')) return;
+    if (e.key === 'ArrowLeft') $('prev-btn').click();
+    if (e.key === 'ArrowRight') $('next-btn').click();
+  });
+
+  // ---- Browse ----
+  async function loadPublicDecks() {
+    const res = await apiFetch('/api/public-decks');
+    publicDecks = await res.json();
+    renderPublicDecks();
+  }
+
+  function renderPublicDecks() {
+    const list = $('public-decks-list');
+    if (!publicDecks.length) {
+      list.innerHTML = '<div class="empty">No public decks yet.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    publicDecks.forEach((d) => {
+      const el = document.createElement('div');
+      el.className = 'deck-item';
+      const actions = d.is_owner
+        ? `<button class="btn" data-act="view">View</button>
+           <button class="btn" data-act="study">Study</button>`
+        : `<button class="btn" data-act="view">View</button>
+           <button class="btn" data-act="study">Study</button>
+           <button class="btn" data-act="copy">Copy to my decks</button>`;
+      el.innerHTML = `
+        <span class="badge">Public</span>
+        <span class="deck-name">${escapeHtml(d.name)}</span>
+        <span class="deck-meta">by ${escapeHtml(d.owner)} &middot; ${d.card_count} card${d.card_count === 1 ? '' : 's'}</span>
+        <div class="deck-actions">${actions}</div>`;
+      el.querySelector('[data-act="view"]').addEventListener('click', () => viewPublicDeck(d));
+      el.querySelector('[data-act="study"]').addEventListener('click', () => studyPublicDeck(d));
+      const copyBtn = el.querySelector('[data-act="copy"]');
+      if (copyBtn) copyBtn.addEventListener('click', () => copyDeck(d.id));
+      list.appendChild(el);
+    });
+  }
+
+  async function viewPublicDeck(d) {
+    const res = await apiFetch('/api/cards?deck_id=' + d.id);
+    const cardsList = await res.json();
+    $('public-deck-title').textContent = `${d.name} by ${d.owner}`;
+    const box = $('public-deck-cards');
+    if (!cardsList.length) {
+      box.innerHTML = '<div class="empty">This deck has no cards.</div>';
+    } else {
+      box.innerHTML = '';
+      cardsList.forEach((c) => {
+        const item = document.createElement('div');
+        item.className = 'pc-item';
+        item.innerHTML = c.image
+          ? `<img src="/uploads/${c.image}" alt="${escapeHtml(c.name)}" loading="lazy">`
+          : `<div class="pc-ph">&#128203;</div>`;
+        item.innerHTML += `<span title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>`;
+        box.appendChild(item);
+      });
+    }
+    $('public-deck-modal').classList.remove('hidden');
+  }
+
+  function closePublicDeck() {
+    $('public-deck-modal').classList.add('hidden');
+  }
+
+  $('public-deck-close-btn').addEventListener('click', closePublicDeck);
+  $('public-deck-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closePublicDeck(); });
+
+  function studyPublicDeck(d) {
+    studyDeck = { id: d.id, name: d.name, owner: d.owner, is_owner: false };
+    $('study-deck-select').value = '';
+    switchTab('study');
+    loadStudyCards();
+  }
+
+  async function copyDeck(id) {
+    const res = await apiFetch('/api/decks/' + id + '/copy', { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Copy failed');
+      return;
+    }
+    const copied = await res.json();
+    showToast('Deck copied');
+    currentDeckId = copied.id;
+    await loadDecks();
+    await loadCards();
+  }
+
+  // ---- Tabs ----
+  function switchTab(tab) {
+    document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    $('manage-view').classList.toggle('hidden', tab !== 'manage');
+    $('study-view').classList.toggle('hidden', tab !== 'study');
+    $('browse-view').classList.toggle('hidden', tab !== 'browse');
+    if (tab === 'study') { updateStudyBanner(); loadStudyCards(); }
+    if (tab === 'browse') loadPublicDecks();
+  }
+
+  document.querySelectorAll('nav button').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  init();
+</script>
+</body>
+</html>
