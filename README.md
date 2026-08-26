@@ -1,23 +1,27 @@
 # Flash Cards
 
-A simple, self-hosted image flash-card study app. Upload an image and a name for
-each card, then study your decks in order or shuffled. Organize cards into
-multiple named decks, make decks public for others to browse and copy, and move
-or copy individual cards between your own decks.
+A simple, self-hosted flash-card study app. Each card has a **front** (a name
+plus an optional image) and a **back** (an answer plus an optional image). Type
+in both sides when creating a card, then flip through your decks in order or
+shuffled. Organize cards into multiple named decks, make decks public for others
+to browse and copy, and move or copy individual cards between your own decks.
 
 ## Features
 
 - **Accounts** — per-user login with salted scrypt password hashing and 30-day
   cookie sessions.
-- **Cards** — add a name plus an uploaded image (or an automatically suggested
-  image from Wikimedia Commons), edit, or delete cards.
+- **Cards** — each card has a front (name) and a back (answer), with an optional
+  uploaded image on either side (or an automatically suggested front image from
+  Wikimedia Commons). Edit or delete cards.
 - **Decks** — keep cards in multiple named decks. Each deck can be **public** or
   **private**.
 - **Sharing** — browse other users' public decks, view their cards, study them,
   and copy a whole deck into your own account.
 - **Move / copy cards** — move or copy individual cards between your own decks;
   copied cards get a fresh copy of their image file.
-- **Study mode** — sequential or shuffled, with left/right arrow navigation.
+- **Study mode** — sequential or shuffled, with left/right arrow navigation. The
+  front is shown first; click the card (or press Space/Enter) to flip it and
+  reveal the answer.
 
 ## Tech stack
 
@@ -73,8 +77,8 @@ The production setup runs the app behind Apache and keeps it alive with systemd:
 | GET    | `/api/public-decks`      | List public decks                           |
 | POST   | `/api/decks/:id/copy`    | Copy a public deck into your account        |
 | GET    | `/api/cards?deck_id=X`   | List a deck's cards                         |
-| POST   | `/api/cards`             | Add a card (name + image)                   |
-| PUT    | `/api/cards/:id`         | Edit a card                                 |
+| POST   | `/api/cards`             | Add a card (name + answer, optional front/back images) |
+| PUT    | `/api/cards/:id`         | Edit a card (front/back)                    |
 | DELETE | `/api/cards/:id`         | Delete a card                               |
 | POST   | `/api/cards/:id/move`    | Move a card to another of your decks        |
 | POST   | `/api/cards/:id/copy`    | Copy a card to another of your decks        |

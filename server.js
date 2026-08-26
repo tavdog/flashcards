@@ -59,6 +59,17 @@ db.exec(`
   }
 })();
 
+// Add front/back flash-card fields if missing (existing installs)
+(function addCardSides() {
+  const cols = db.prepare('PRAGMA table_info(cards)').all();
+  if (!cols.find((c) => c.name === 'answer')) {
+    db.exec('ALTER TABLE cards ADD COLUMN answer TEXT');
+  }
+  if (!cols.find((c) => c.name === 'image_back')) {
+    db.exec('ALTER TABLE cards ADD COLUMN image_back TEXT');
+  }
+})();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -345,10 +356,13 @@ app.delete('/api/decks/:id', requireAuth, (req, res) => {
   if (!access || !access.isOwner) return res.status(404).json({ error: 'Deck not found' });
   const count = db.prepare('SELECT COUNT(*) AS c FROM decks WHERE user_id = ?').get(req.user.id).c;
   if (count <= 1) return res.status(400).json({ error: 'You must keep at least one deck' });
-  const cards = db.prepare('SELECT id, image FROM cards WHERE deck_id = ?').all(req.params.id);
+  const cards = db.prepare('SELECT id, image, image_back FROM cards WHERE deck_id = ?').all(req.params.id);
   db.prepare('DELETE FROM cards WHERE deck_id = ?').run(req.params.id);
   db.prepare('DELETE FROM decks WHERE id = ?').run(req.params.id);
-  for (const c of cards) if (c.image) fs.unlink(path.join(UPLOAD_DIR, c.image), () => {});
+  for (const c of cards) {
+    if (c.image) fs.unlink(path.join(UPLOAD_DIR, c.image), () => {});
+    if (c.image_back) fs.unlink(path.join(UPLOAD_DIR, c.image_back), () => {});
+  }
   res.json({ ok: true });
 });
 
@@ -378,10 +392,11 @@ app.post('/api/decks/:id/copy', requireAuth, (req, res) => {
   }
   const info = db.prepare('INSERT INTO decks (name, user_id, is_public) VALUES (?, ?, 0)').run(access.deck.name, req.user.id);
   const newDeckId = info.lastInsertRowid;
-  const cards = db.prepare('SELECT name, image FROM cards WHERE deck_id = ?').all(access.deck.id);
+  const cards = db.prepare('SELECT name, answer, image, image_back FROM cards WHERE deck_id = ?').all(access.deck.id);
   for (const c of cards) {
     const image = copyImageFile(c.image);
-    db.prepare('INSERT INTO cards (name, image, user_id, deck_id) VALUES (?, ?, ?, ?)').run(c.name, image, req.user.id, newDeckId);
+    const imageBack = copyImageFile(c.image_back);
+    db.prepare('INSERT INTO cards (name, answer, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?)').run(c.name, c.answer, image, imageBack, req.user.id, newDeckId);
   }
   const deck = db.prepare('SELECT id, name, is_public, created_at FROM decks WHERE id = ?').get(newDeckId);
   res.status(201).json(deck);
@@ -395,7 +410,7 @@ app.get('/api/cards', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'Deck not found' });
   }
   const order = req.query.order === 'random' ? 'ORDER BY RANDOM()' : 'ORDER BY id ASC';
-  const cards = db.prepare(`SELECT id, name, image, created_at FROM cards WHERE deck_id = ? ${order}`).all(deckId);
+  const cards = db.prepare(`SELECT id, name, answer, image, image_back, created_at FROM cards WHERE deck_id = ? ${order}`).all(deckId);
   res.json(cards);
 });
 
@@ -407,12 +422,14 @@ app.get('/api/suggest-image', requireAuth, async (req, res) => {
 });
 
 app.post('/api/cards', requireAuth, (req, res) => {
-  upload.single('image')(req, res, async (err) => {
+  upload.fields([{ name: 'image', maxCount: 1 }, { name: 'image_back', maxCount: 1 }])(req, res, async (err) => {
     try {
       if (err) return res.status(400).json({ error: err.message });
       const rawName = (req.body.name || '').trim();
       const name = cleanName(rawName);
       if (!name) return res.status(400).json({ error: 'Name is required' });
+
+      const answer = (req.body.answer || '').trim();
 
       const deckId = Number(req.body.deck_id);
       if (!deckId) return res.status(400).json({ error: 'deck_id is required' });
@@ -421,8 +438,8 @@ app.post('/api/cards', requireAuth, (req, res) => {
 
       let image = null;
       let imageSource = 'none';
-      if (req.file) {
-        image = req.file.filename;
+      if (req.files && req.files.image && req.files.image[0]) {
+        image = req.files.image[0].filename;
         imageSource = 'upload';
       } else {
         const url = (req.body.suggest_url || '').trim();
@@ -435,8 +452,10 @@ app.post('/api/cards', requireAuth, (req, res) => {
         }
       }
 
-      const info = db.prepare('INSERT INTO cards (name, image, user_id, deck_id) VALUES (?, ?, ?, ?)').run(name, image, req.user.id, deckId);
-      const card = db.prepare('SELECT id, name, image, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
+      const imageBack = (req.files && req.files.image_back && req.files.image_back[0]) ? req.files.image_back[0].filename : null;
+
+      const info = db.prepare('INSERT INTO cards (name, answer, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?)').run(name, answer, image, imageBack, req.user.id, deckId);
+      const card = db.prepare('SELECT id, name, answer, image, image_back, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
       card.image_source = imageSource;
       res.status(201).json(card);
     } catch (e) {
@@ -446,22 +465,24 @@ app.post('/api/cards', requireAuth, (req, res) => {
 });
 
 app.put('/api/cards/:id', requireAuth, (req, res) => {
-  upload.single('image')(req, res, async (err) => {
+  upload.fields([{ name: 'image', maxCount: 1 }, { name: 'image_back', maxCount: 1 }])(req, res, async (err) => {
     try {
       if (err) return res.status(400).json({ error: err.message });
-      const existing = db.prepare('SELECT id, name, image FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      const existing = db.prepare('SELECT id, name, answer, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
       if (!existing) return res.status(404).json({ error: 'Card not found' });
 
       const rawName = (req.body.name || '').trim();
       const name = cleanName(rawName);
       if (!name) return res.status(400).json({ error: 'Name is required' });
 
+      const answer = (req.body.answer || '').trim();
+
       let image = existing.image;
       let imageSource = 'unchanged';
 
-      if (req.file) {
+      if (req.files && req.files.image && req.files.image[0]) {
         if (existing.image) fs.unlink(path.join(UPLOAD_DIR, existing.image), () => {});
-        image = req.file.filename;
+        image = req.files.image[0].filename;
         imageSource = 'upload';
       } else {
         const url = (req.body.suggest_url || '').trim();
@@ -479,8 +500,17 @@ app.put('/api/cards/:id', requireAuth, (req, res) => {
         }
       }
 
-      db.prepare('UPDATE cards SET name = ?, image = ? WHERE id = ? AND user_id = ?').run(name, image, req.params.id, req.user.id);
-      const card = db.prepare('SELECT id, name, image, created_at FROM cards WHERE id = ?').get(req.params.id);
+      let imageBack = existing.image_back;
+      if (req.files && req.files.image_back && req.files.image_back[0]) {
+        if (existing.image_back) fs.unlink(path.join(UPLOAD_DIR, existing.image_back), () => {});
+        imageBack = req.files.image_back[0].filename;
+      } else if (req.body.remove_image_back === 'true') {
+        if (existing.image_back) fs.unlink(path.join(UPLOAD_DIR, existing.image_back), () => {});
+        imageBack = null;
+      }
+
+      db.prepare('UPDATE cards SET name = ?, answer = ?, image = ?, image_back = ? WHERE id = ? AND user_id = ?').run(name, answer, image, imageBack, req.params.id, req.user.id);
+      const card = db.prepare('SELECT id, name, answer, image, image_back, created_at FROM cards WHERE id = ?').get(req.params.id);
       card.image_source = imageSource;
       res.json(card);
     } catch (e) {
@@ -490,10 +520,11 @@ app.put('/api/cards/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/cards/:id', requireAuth, (req, res) => {
-  const card = db.prepare('SELECT id, name, image FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  const card = db.prepare('SELECT id, name, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!card) return res.status(404).json({ error: 'Card not found' });
   db.prepare('DELETE FROM cards WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   if (card.image) fs.unlink(path.join(UPLOAD_DIR, card.image), () => {});
+  if (card.image_back) fs.unlink(path.join(UPLOAD_DIR, card.image_back), () => {});
   res.json({ ok: true });
 });
 
@@ -509,15 +540,16 @@ app.post('/api/cards/:id/move', requireAuth, (req, res) => {
 });
 
 app.post('/api/cards/:id/copy', requireAuth, (req, res) => {
-  const card = db.prepare('SELECT id, name, image FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  const card = db.prepare('SELECT id, name, answer, image, image_back FROM cards WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!card) return res.status(404).json({ error: 'Card not found' });
   const deckId = Number(req.body.deck_id);
   if (!deckId) return res.status(400).json({ error: 'deck_id is required' });
   const access = getDeckAccess(deckId, req.user.id);
   if (!access || !access.isOwner) return res.status(404).json({ error: 'Deck not found' });
   const image = copyImageFile(card.image);
-  const info = db.prepare('INSERT INTO cards (name, image, user_id, deck_id) VALUES (?, ?, ?, ?)').run(card.name, image, req.user.id, deckId);
-  const newCard = db.prepare('SELECT id, name, image, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
+  const imageBack = copyImageFile(card.image_back);
+  const info = db.prepare('INSERT INTO cards (name, answer, image, image_back, user_id, deck_id) VALUES (?, ?, ?, ?, ?, ?)').run(card.name, card.answer, image, imageBack, req.user.id, deckId);
+  const newCard = db.prepare('SELECT id, name, answer, image, image_back, created_at FROM cards WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(newCard);
 });
 

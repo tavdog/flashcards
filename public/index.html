@@ -74,6 +74,22 @@
     border-radius: 8px;
     font-size: 14px;
   }
+  .side-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 200px;
+    min-width: 180px;
+  }
+  .side-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .side-group input[type="text"] { width: 100%; }
+  .side-group .file-label { width: 100%; justify-content: center; }
   .file-label {
     position: relative;
     display: inline-flex;
@@ -167,6 +183,8 @@
     gap: 8px;
   }
   .card .name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .text { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+  .card .answer { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card .del {
     background: none;
     border: none;
@@ -279,12 +297,22 @@
     object-fit: contain;
     border-radius: 8px;
   }
-  #study-name {
-    margin-top: 16px;
+  #study-card { cursor: pointer; }
+  .study-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+  }
+  #study-name,
+  #study-answer {
     font-size: 22px;
     font-weight: 650;
   }
+  #study-answer.muted { color: var(--muted); font-weight: 400; }
   #study-empty { color: var(--muted); font-size: 15px; }
+  #study-hint { margin-top: 20px; font-size: 13px; color: var(--muted); }
 
   /* Auth */
   #auth-view {
@@ -456,6 +484,14 @@
     gap: 14px;
   }
   .modal h2 { margin: 0; font-size: 18px; font-weight: 650; }
+  .modal-section {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-top: 2px;
+  }
   .modal input[type="text"] {
     padding: 10px 12px;
     border: 1px solid var(--border);
@@ -585,11 +621,22 @@
       <button type="button" class="btn" id="delete-deck-btn">Delete</button>
     </div>
     <form id="upload-form">
-      <input type="text" id="card-name" placeholder="Name" autocomplete="off">
-      <label class="file-label" id="file-label">
-        <input type="file" id="card-image" accept="image/*">
-        <span id="file-name">Choose image (optional)…</span>
-      </label>
+      <div class="side-group">
+        <span class="side-label">Front</span>
+        <input type="text" id="card-name" placeholder="Front (name)" autocomplete="off">
+        <label class="file-label" id="file-label">
+          <input type="file" id="card-image" accept="image/*">
+          <span id="file-name">Front image (optional)…</span>
+        </label>
+      </div>
+      <div class="side-group">
+        <span class="side-label">Back</span>
+        <input type="text" id="card-answer" placeholder="Back (answer)" autocomplete="off">
+        <label class="file-label" id="back-file-label">
+          <input type="file" id="card-image-back" accept="image/*">
+          <span id="back-file-name">Back image (optional)…</span>
+        </label>
+      </div>
       <button type="submit" id="submit-btn" disabled>Add card</button>
       <div id="suggestion" class="hidden">
         <img id="suggest-img" alt="">
@@ -621,8 +668,15 @@
       <button class="nav-arrow" id="prev-btn">&#8249;</button>
       <div id="study-card">
         <div id="study-empty">No cards yet. Add some in Manage first.</div>
-        <img id="study-image" alt="" class="hidden">
-        <div id="study-name" class="hidden"></div>
+        <div id="study-front" class="study-side">
+          <img id="study-image" alt="" class="hidden">
+          <div id="study-name"></div>
+        </div>
+        <div id="study-back" class="study-side hidden">
+          <img id="study-image-back" alt="" class="hidden">
+          <div id="study-answer"></div>
+        </div>
+        <div id="study-hint">Click card to show answer</div>
       </div>
       <button class="nav-arrow" id="next-btn">&#8250;</button>
     </div>
@@ -639,7 +693,8 @@
   <div class="modal-overlay" id="edit-overlay">
     <div class="modal">
       <h2>Edit card</h2>
-      <input type="text" id="edit-name" placeholder="Name" autocomplete="off">
+      <span class="modal-section">Front</span>
+      <input type="text" id="edit-name" placeholder="Front (name)" autocomplete="off">
       <div class="current">
         <span>Current image:</span>
         <img id="edit-current-img" alt="" class="hidden">
@@ -647,7 +702,7 @@
       </div>
       <label class="file-label" id="edit-file-label">
         <input type="file" id="edit-image" accept="image/*">
-        <span id="edit-file-name">Choose new image (optional)…</span>
+        <span id="edit-file-name">Front image (optional)…</span>
       </label>
       <div id="edit-suggestion" class="suggestion hidden">
         <img id="edit-suggest-img" alt="">
@@ -662,7 +717,22 @@
       </div>
       <label class="toggle">
         <input type="checkbox" id="edit-remove-image">
-        Remove image
+        Remove front image
+      </label>
+      <span class="modal-section">Back</span>
+      <input type="text" id="edit-answer" placeholder="Back (answer)" autocomplete="off">
+      <div class="current">
+        <span>Current image:</span>
+        <img id="edit-current-img-back" alt="" class="hidden">
+        <span id="edit-no-img-back" class="hidden">None</span>
+      </div>
+      <label class="file-label" id="edit-back-file-label">
+        <input type="file" id="edit-back-image" accept="image/*">
+        <span id="edit-back-file-name">Back image (optional)…</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="edit-remove-image-back">
+        Remove back image
       </label>
       <div class="modal-actions">
         <button type="button" class="btn" id="edit-cancel-btn">Cancel</button>
@@ -726,6 +796,7 @@
   let cards = [];
   let studyList = [];
   let studyIndex = 0;
+  let studyFlipped = false;
   let suggestImages = [];
   let suggestIndex = 0;
 
@@ -739,9 +810,13 @@
   let moveMode = null;
 
   const nameInput = $('card-name');
+  const answerInput = $('card-answer');
   const fileInput = $('card-image');
   const fileLabel = $('file-label');
   const fileName = $('file-name');
+  const backFileInput = $('card-image-back');
+  const backFileLabel = $('back-file-label');
+  const backFileName = $('back-file-name');
   const submitBtn = $('submit-btn');
 
   function updateSubmitState() {
@@ -757,11 +832,16 @@
   });
 
   fileInput.addEventListener('change', () => {
-    fileName.textContent = fileInput.files.length ? fileInput.files[0].name : 'Choose image (optional)…';
+    fileName.textContent = fileInput.files.length ? fileInput.files[0].name : 'Front image (optional)…';
     fileLabel.classList.toggle('has-file', !!fileInput.files.length);
     updateSubmitState();
     if (fileInput.files.length) hideSuggestion();
     else fetchSuggestion();
+  });
+
+  backFileInput.addEventListener('change', () => {
+    backFileName.textContent = backFileInput.files.length ? backFileInput.files[0].name : 'Back image (optional)…';
+    backFileLabel.classList.toggle('has-file', !!backFileInput.files.length);
   });
 
   async function fetchSuggestion() {
@@ -1022,10 +1102,16 @@
         ? `<button class="move" title="Move">&#8644;</button>
            <button class="copy" title="Copy">&#10697;</button>`
         : '';
+      const answerLine = c.answer
+        ? `<span class="answer" title="${escapeHtml(c.answer)}">${escapeHtml(c.answer)}</span>`
+        : '';
       el.innerHTML = `
         ${thumb}
         <div class="body">
-          <span class="name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
+          <span class="text">
+            <span class="name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
+            ${answerLine}
+          </span>
           <span class="actions">
             <button class="edit" title="Edit">&#9998;</button>
             ${transfer}
@@ -1063,11 +1149,15 @@
     if (!name) return;
     const fd = new FormData();
     fd.append('name', name);
+    fd.append('answer', answerInput.value.trim());
     fd.append('deck_id', currentDeckId);
     if (fileInput.files[0]) {
       fd.append('image', fileInput.files[0]);
     } else if ($('use-suggest').checked && suggestImages.length) {
       fd.append('suggest_url', suggestImages[suggestIndex].url);
+    }
+    if (backFileInput.files[0]) {
+      fd.append('image_back', backFileInput.files[0]);
     }
     submitBtn.disabled = true;
     try {
@@ -1081,9 +1171,13 @@
       const card = await res.json();
       showToast(card.image_source === 'suggested' ? 'Added with suggested image' : 'Card added');
       nameInput.value = '';
+      answerInput.value = '';
       fileInput.value = '';
-      fileName.textContent = 'Choose image (optional)…';
+      fileName.textContent = 'Front image (optional)…';
       fileLabel.classList.remove('has-file');
+      backFileInput.value = '';
+      backFileName.textContent = 'Back image (optional)…';
+      backFileLabel.classList.remove('has-file');
       hideSuggestion();
       updateSubmitState();
       await loadCards();
@@ -1155,9 +1249,13 @@
   let editSuggestTimer = null;
 
   const editNameInput = $('edit-name');
+  const editAnswerInput = $('edit-answer');
   const editFileInput = $('edit-image');
   const editFileLabel = $('edit-file-label');
   const editFileName = $('edit-file-name');
+  const editBackFileInput = $('edit-back-image');
+  const editBackFileLabel = $('edit-back-file-label');
+  const editBackFileName = $('edit-back-file-name');
   const editSaveBtn = $('edit-save-btn');
 
   function updateEditSaveState() {
@@ -1171,7 +1269,7 @@
   });
 
   editFileInput.addEventListener('change', () => {
-    editFileName.textContent = editFileInput.files.length ? editFileInput.files[0].name : 'Choose new image (optional)…';
+    editFileName.textContent = editFileInput.files.length ? editFileInput.files[0].name : 'Front image (optional)…';
     editFileLabel.classList.toggle('has-file', !!editFileInput.files.length);
     if (editFileInput.files.length) {
       hideEditSuggestion();
@@ -1184,9 +1282,23 @@
   $('edit-remove-image').addEventListener('change', () => {
     if ($('edit-remove-image').checked) {
       editFileInput.value = '';
-      editFileName.textContent = 'Choose new image (optional)…';
+      editFileName.textContent = 'Front image (optional)…';
       editFileLabel.classList.remove('has-file');
       hideEditSuggestion();
+    }
+  });
+
+  editBackFileInput.addEventListener('change', () => {
+    editBackFileName.textContent = editBackFileInput.files.length ? editBackFileInput.files[0].name : 'Back image (optional)…';
+    editBackFileLabel.classList.toggle('has-file', !!editBackFileInput.files.length);
+    if (editBackFileInput.files.length) $('edit-remove-image-back').checked = false;
+  });
+
+  $('edit-remove-image-back').addEventListener('change', () => {
+    if ($('edit-remove-image-back').checked) {
+      editBackFileInput.value = '';
+      editBackFileName.textContent = 'Back image (optional)…';
+      editBackFileLabel.classList.remove('has-file');
     }
   });
 
@@ -1234,11 +1346,16 @@
     if (!card) return;
     editingId = id;
     editNameInput.value = card.name;
+    editAnswerInput.value = card.answer || '';
     editFileInput.value = '';
-    editFileName.textContent = 'Choose new image (optional)…';
+    editFileName.textContent = 'Front image (optional)…';
     editFileLabel.classList.remove('has-file');
+    editBackFileInput.value = '';
+    editBackFileName.textContent = 'Back image (optional)…';
+    editBackFileLabel.classList.remove('has-file');
     hideEditSuggestion();
     $('edit-remove-image').checked = false;
+    $('edit-remove-image-back').checked = false;
     if (card.image) {
       $('edit-current-img').src = '/uploads/' + card.image;
       $('edit-current-img').classList.remove('hidden');
@@ -1247,6 +1364,15 @@
       $('edit-current-img').classList.add('hidden');
       $('edit-current-img').removeAttribute('src');
       $('edit-no-img').classList.remove('hidden');
+    }
+    if (card.image_back) {
+      $('edit-current-img-back').src = '/uploads/' + card.image_back;
+      $('edit-current-img-back').classList.remove('hidden');
+      $('edit-no-img-back').classList.add('hidden');
+    } else {
+      $('edit-current-img-back').classList.add('hidden');
+      $('edit-current-img-back').removeAttribute('src');
+      $('edit-no-img-back').classList.remove('hidden');
     }
     updateEditSaveState();
     $('edit-modal').classList.remove('hidden');
@@ -1274,12 +1400,18 @@
     if (!name) return;
     const fd = new FormData();
     fd.append('name', name);
+    fd.append('answer', editAnswerInput.value.trim());
     if (editFileInput.files[0]) {
       fd.append('image', editFileInput.files[0]);
     } else if ($('edit-use-suggest').checked && editSuggestImages.length) {
       fd.append('suggest_url', editSuggestImages[editSuggestIndex].url);
     } else if ($('edit-remove-image').checked) {
       fd.append('remove_image', 'true');
+    }
+    if (editBackFileInput.files[0]) {
+      fd.append('image_back', editBackFileInput.files[0]);
+    } else if ($('edit-remove-image-back').checked) {
+      fd.append('remove_image_back', 'true');
     }
     editSaveBtn.disabled = true;
     try {
@@ -1345,25 +1477,54 @@
   function renderStudy() {
     const hasCards = studyList.length > 0;
     $('study-empty').classList.toggle('hidden', hasCards);
-    $('study-name').classList.toggle('hidden', !hasCards);
+    $('study-hint').classList.toggle('hidden', !hasCards);
     $('prev-btn').disabled = studyIndex <= 0;
     $('next-btn').disabled = studyIndex >= studyList.length - 1;
 
     if (!hasCards) {
-      $('study-image').classList.add('hidden');
+      $('study-front').classList.add('hidden');
+      $('study-back').classList.add('hidden');
       $('progress').textContent = '0 / 0';
       return;
     }
     const card = studyList[studyIndex];
+
     if (card.image) {
       $('study-image').src = '/uploads/' + card.image;
       $('study-image').alt = card.name;
       $('study-image').classList.remove('hidden');
     } else {
       $('study-image').classList.add('hidden');
+      $('study-image').removeAttribute('src');
     }
     $('study-name').textContent = card.name;
+
+    if (card.image_back) {
+      $('study-image-back').src = '/uploads/' + card.image_back;
+      $('study-image-back').alt = card.answer || '';
+      $('study-image-back').classList.remove('hidden');
+    } else {
+      $('study-image-back').classList.add('hidden');
+      $('study-image-back').removeAttribute('src');
+    }
+    $('study-answer').textContent = card.answer || '(no answer)';
+    $('study-answer').classList.toggle('muted', !card.answer);
+
     $('progress').textContent = `${studyIndex + 1} / ${studyList.length}`;
+    studyFlipped = false;
+    applyStudyFace();
+  }
+
+  function applyStudyFace() {
+    $('study-front').classList.toggle('hidden', studyFlipped);
+    $('study-back').classList.toggle('hidden', !studyFlipped);
+    $('study-hint').textContent = studyFlipped ? 'Click card to show front' : 'Click card to show answer';
+  }
+
+  function flipStudy() {
+    if (!studyList.length) return;
+    studyFlipped = !studyFlipped;
+    applyStudyFace();
   }
 
   $('prev-btn').addEventListener('click', () => { if (studyIndex > 0) { studyIndex--; renderStudy(); } });
@@ -1374,10 +1535,18 @@
     else { studyList = shuffle(studyList); studyIndex = 0; renderStudy(); }
   });
 
+  $('study-card').addEventListener('click', flipStudy);
+
   document.addEventListener('keydown', (e) => {
     if ($('study-view').classList.contains('hidden')) return;
     if (e.key === 'ArrowLeft') $('prev-btn').click();
     if (e.key === 'ArrowRight') $('next-btn').click();
+    if (e.key === ' ' || e.key === 'Enter') {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      flipStudy();
+    }
   });
 
   // ---- Browse ----
