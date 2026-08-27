@@ -798,6 +798,10 @@
         <input type="checkbox" id="edit-remove-image-back">
         Remove back image
       </label>
+      <label class="toggle">
+        <input type="checkbox" id="edit-swap-images">
+        Swap front and back images
+      </label>
       <span class="modal-section">Tags</span>
       <input type="text" id="edit-tags" placeholder="Tags (comma-separated, optional)" autocomplete="off" list="tag-suggestions">
       <div class="modal-actions">
@@ -1494,6 +1498,7 @@
     hideEditSuggestion();
     $('edit-remove-image').checked = false;
     $('edit-remove-image-back').checked = false;
+    $('edit-swap-images').checked = false;
     if (card.image) {
       $('edit-current-img').src = '/uploads/' + card.image;
       $('edit-current-img').classList.remove('hidden');
@@ -1551,6 +1556,9 @@
       fd.append('image_back', editBackFileInput.files[0]);
     } else if ($('edit-remove-image-back').checked) {
       fd.append('remove_image_back', 'true');
+    }
+    if ($('edit-swap-images').checked) {
+      fd.append('swap_images', 'true');
     }
     editSaveBtn.disabled = true;
     try {

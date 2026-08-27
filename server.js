@@ -719,6 +719,12 @@ app.put('/api/cards/:id', requireAuth, (req, res) => {
         imageBack = null;
       }
 
+      if (req.body.swap_images === 'true') {
+        const tmp = image;
+        image = imageBack;
+        imageBack = tmp;
+      }
+
       const tags = req.body.tags === undefined
         ? String(existing.tags || '[]')
         : JSON.stringify(normalizeTags(req.body.tags));
