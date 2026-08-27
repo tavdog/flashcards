@@ -1679,9 +1679,12 @@
     if ($('study-view').classList.contains('hidden')) return;
     if (e.key === 'ArrowLeft') $('prev-btn').click();
     if (e.key === 'ArrowRight') $('next-btn').click();
-    if (e.key === ' ' || e.key === 'Enter') {
+    // a / A / Space / Enter reveal the answer; ignored while typing in a text field
+    if (e.key === 'a' || e.key === 'A' || e.key === ' ' || e.key === 'Enter') {
       const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.tagName === 'TEXTAREA')) return;
+      if (t && t !== document.body &&
+          (t.tagName === 'TEXTAREA' ||
+           (t.tagName === 'INPUT' && !['checkbox', 'radio'].includes((t.type || '').toLowerCase())))) return;
       e.preventDefault();
       flipStudy();
     }
