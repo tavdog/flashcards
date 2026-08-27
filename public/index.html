@@ -724,6 +724,7 @@
         Random order
       </label>
       <button class="btn" id="reshuffle-btn">Shuffle now</button>
+      <button class="btn hidden" id="study-edit-btn">Edit card</button>
       <span id="progress"></span>
     </div>
     <div id="study-banner" class="hidden"></div>
@@ -1478,7 +1479,7 @@
   });
 
   function openEdit(id) {
-    const card = cards.find((c) => c.id === id);
+    const card = cards.find((c) => c.id === id) || studyCards.find((c) => c.id === id);
     if (!card) return;
     editingId = id;
     editNameInput.value = card.name;
@@ -1587,11 +1588,16 @@
   }
 
   async function loadStudyCards() {
+    const prevId = studyList[studyIndex] ? studyList[studyIndex].id : null;
     if (!studyDeck) { studyCards = []; updateStudyBanner(); resetStudy(); return; }
     const res = await apiFetch('/api/cards?deck_id=' + studyDeck.id);
     studyCards = await res.json();
     updateStudyBanner();
     resetStudy();
+    if (prevId != null) {
+      const i = studyList.findIndex((c) => c.id === prevId);
+      if (i >= 0) { studyIndex = i; renderStudy(); }
+    }
   }
 
   function updateStudyBanner() {
@@ -1623,9 +1629,11 @@
       $('study-front').classList.add('hidden');
       $('study-back').classList.add('hidden');
       $('progress').textContent = '0 / 0';
+      $('study-edit-btn').classList.add('hidden');
       return;
     }
     const card = studyList[studyIndex];
+    $('study-edit-btn').classList.remove('hidden');
 
     if (card.image) {
       $('study-image').src = '/uploads/' + card.image;
@@ -1675,8 +1683,14 @@
 
   $('study-card').addEventListener('click', flipStudy);
 
+  $('study-edit-btn').addEventListener('click', () => {
+    const card = studyList[studyIndex];
+    if (card) openEdit(card.id);
+  });
+
   document.addEventListener('keydown', (e) => {
     if ($('study-view').classList.contains('hidden')) return;
+    if (!$('edit-modal').classList.contains('hidden')) return;
     if (e.key === 'ArrowLeft') $('prev-btn').click();
     if (e.key === 'ArrowRight') $('next-btn').click();
     // a / A / Space / Enter reveal the answer; ignored while typing in a text field
