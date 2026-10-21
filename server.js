@@ -10,6 +10,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
+const { spawn } = require('child_process');
 const Database = require('better-sqlite3');
 
 const PORT = process.env.PORT || 3000;
@@ -488,6 +490,35 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   res.json({ user: getSessionUser(req) });
+});
+
+// Streams a consistent snapshot (SQLite backup API) of the DB plus all uploads.
+app.get('/api/admin/backup', requireAdmin, async (req, res) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fc-backup-'));
+  const cleanup = () => fs.rm(tmp, { recursive: true, force: true }, () => {});
+  try {
+    await db.backup(path.join(tmp, 'cards.db'));
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    fs.symlinkSync(UPLOAD_DIR, path.join(tmp, 'uploads'), 'dir');
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="flashcards-backup-${stamp}.tar.gz"`);
+    const tar = spawn('tar', ['-czhf', '-', '-C', tmp, 'cards.db', 'uploads']);
+    tar.stdout.pipe(res);
+    tar.stderr.on('data', (d) => console.error('backup tar:', d.toString().trim()));
+    tar.on('close', (code) => {
+      cleanup();
+      if (code !== 0 && !res.headersSent) res.status(500).end();
+    });
+    tar.on('error', (e) => {
+      cleanup();
+      console.error('backup tar failed:', e.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Backup failed: tar unavailable' });
+    });
+  } catch (e) {
+    cleanup();
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/admin/users', requireAdmin, (req, res) => {
