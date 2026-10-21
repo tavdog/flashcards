@@ -307,11 +307,14 @@
   .btn {
     border: 1px solid var(--border);
     background: var(--panel);
+    color: var(--text);
     padding: 8px 14px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
+    text-decoration: none;
+    display: inline-block;
   }
   .btn:hover { background: var(--accent-soft); }
   #progress { margin-left: auto; color: var(--muted); font-size: 14px; }
@@ -652,6 +655,7 @@
     <button data-tab="browse">Browse</button>
   </nav>
   <div id="user-box" class="hidden">
+    <a class="btn hidden" id="admin-link" href="admin.html">Admin</a>
     <span id="user-name"></span>
     <button class="btn" id="logout-btn">Log out</button>
   </div>
@@ -977,6 +981,7 @@
   function showApp(user) {
     currentUser = user;
     $('user-name').textContent = user.username;
+    $('admin-link').classList.toggle('hidden', !user.is_admin);
     $('auth-view').classList.add('hidden');
     $('app-view').classList.remove('hidden');
     $('main-nav').classList.remove('hidden');

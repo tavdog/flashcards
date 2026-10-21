@@ -467,18 +467,18 @@ app.post('/api/register', (req, res) => {
   }
 
   startSession(res, userId);
-  res.status(201).json({ user: { id: userId, username } });
+  res.status(201).json({ user: { id: userId, username, is_admin: isFirst ? 1 : 0 } });
 });
 
 app.post('/api/login', (req, res) => {
   const username = (req.body.username || '').trim().toLowerCase();
   const password = req.body.password || '';
-  const user = db.prepare('SELECT id, username, password FROM users WHERE username = ?').get(username);
+  const user = db.prepare('SELECT id, username, password, is_admin FROM users WHERE username = ?').get(username);
   if (!user || !verifyPassword(password, user.password)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
   startSession(res, user.id);
-  res.json({ user: { id: user.id, username: user.username } });
+  res.json({ user: { id: user.id, username: user.username, is_admin: user.is_admin } });
 });
 
 app.post('/api/logout', (req, res) => {
