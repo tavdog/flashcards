@@ -162,6 +162,30 @@ http://127.0.0.1:3000;`). Allow uploads up to ~30 MB in the proxy
 (`LimitRequestBody` / `client_max_body_size`), since images are capped at 25 MB.
 Use an unprivileged port (1024+) so no root is required.
 
+### Railway
+
+The repo ships a `Dockerfile` and `railway.json`, so Railway builds and health
+checks the app with no extra configuration.
+
+1. **New Project → Deploy from GitHub repo** and pick `tavdog/flashcards`.
+   Railway builds the Dockerfile and starts `node server.js`.
+2. **Add a Volume** (service → Settings → Volumes) mounted at `/data`, then set:
+   ```
+   DB_PATH=/data/cards.db
+   UPLOAD_DIR=/data/uploads
+   ```
+   Without a volume the container filesystem is ephemeral and every redeploy
+   discards the database and images.
+3. Leave `PORT` unset — Railway injects it — and leave `BASE_PATH` unset, since
+   the service gets its own hostname.
+4. Keep the service at **one replica**. SQLite and the uploads directory live on
+   a single volume and aren't safe to share between instances.
+5. `railway.json` points the health check at `/api/health`.
+
+To back up, pull the volume contents periodically (`railway volume` commands in
+the Railway CLI) or run `.backup` from a shell on the service; the files to
+save are `/data/cards.db` and `/data/uploads`.
+
 ### Backups
 
 The database runs in WAL mode, so copy it with SQLite's backup command rather
