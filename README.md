@@ -80,6 +80,30 @@ All configuration is via environment variables, so run it with whatever
 supervisor your account has (a systemd user unit below, `tmux`, `nohup`, or a
 container entrypoint).
 
+### Node version
+
+**Node.js 18 or newer is required.** Older releases (Node 12/14/16) can't build
+the `better-sqlite3` native module, and `npm ci` will fail with compiler errors.
+If the host only has an old Node, install a current one in your home directory
+— no root needed:
+
+```bash
+# nvm (installs into ~/.nvm)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.nvm/nvm.sh
+nvm install 22 && nvm use 22
+
+# or a plain tarball (installs into ~/.local/node)
+mkdir -p ~/.local && cd ~/.local
+curl -fsSLO https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz
+tar -xf node-v22.11.0-linux-x64.tar.xz && mv node-v22.11.0-linux-x64 node
+export PATH="$HOME/.local/node/bin:$PATH"
+```
+
+If you use systemd, point `ExecStart` at the absolute path of that interpreter
+(user units don't read your shell profile), e.g.
+`ExecStart=%h/.nvm/versions/node/v22.11.0/bin/node server.js`.
+
 ### Serving under a subpath
 
 If you can't configure the reverse proxy to give the app its own hostname, set

@@ -1,3 +1,10 @@
+const NODE_MAJOR = Number(process.versions.node.split('.')[0]);
+if (NODE_MAJOR < 18) {
+  console.error(`Flash Cards requires Node.js 18 or newer (found ${process.version}).`);
+  console.error('Install a newer Node without root, e.g.: https://github.com/nvm-sh/nvm');
+  process.exit(1);
+}
+
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
