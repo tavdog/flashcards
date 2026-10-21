@@ -58,15 +58,80 @@ The app is configured entirely through environment variables:
 | `PORT`       | `3000`       | Port the HTTP server listens on      |
 | `DB_PATH`    | `./cards.db` | Path to the SQLite database file     |
 | `UPLOAD_DIR` | `./uploads`  | Directory where card images are kept |
+| `BASE_PATH`  | *(empty)*    | Subpath to serve under, e.g. `/flashcards` |
 
 ## Deployment
 
-The production setup runs the app behind Apache and keeps it alive with systemd:
+Deploy straight from this repository — no files need to be copied by hand.
 
-- **Apache 2.4** reverse-proxies HTTPS traffic to `127.0.0.1:3000` (with an
-  HTTP → HTTPS redirect).
-- **systemd** service (`cards.service`) runs `node server.js` in the app
-  directory with `PORT=3000` and restarts automatically on failure.
+```bash
+git clone git@github.com:tavdog/flashcards.git /opt/flashcards
+cd /opt/flashcards
+npm ci --omit=dev
+PORT=3000 DB_PATH=/opt/flashcards/cards.db UPLOAD_DIR=/opt/flashcards/uploads npm start
+```
+
+The database and `uploads/` directory are created automatically on first run.
+
+### Serving under a subpath
+
+If you can't configure the reverse proxy to give the app its own hostname, set
+`BASE_PATH` and point the existing proxy rule at the app. Everything — pages,
+API routes, image URLs, and the session cookie — is then served under that
+prefix:
+
+```bash
+BASE_PATH=/flashcards PORT=3000 npm start
+# → https://example.com/flashcards/
+```
+
+`BASE_PATH=/flashcards` expects the proxy to forward the prefix unchanged
+(`/flashcards/...` → `127.0.0.1:3000/flashcards/...`). Leave `BASE_PATH` unset
+when the proxy strips the prefix or the app is served at the root.
+
+### systemd
+
+`/etc/systemd/system/cards.service`:
+
+```ini
+[Unit]
+Description=Flash Cards Web Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/flashcards
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=BASE_PATH=/flashcards
+Environment=DB_PATH=/opt/flashcards/cards.db
+Environment=UPLOAD_DIR=/opt/flashcards/uploads
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now cards.service
+```
+
+The bundled reference deployment runs behind Apache 2.4 with an HTTPS reverse
+proxy to `127.0.0.1:3000`; nginx works the same way (`proxy_pass
+http://127.0.0.1:3000;`). Allow uploads up to ~30 MB in the proxy
+(`LimitRequestBody` / `client_max_body_size`), since images are capped at 25 MB.
+
+### Backups
+
+The database runs in WAL mode, so copy it with SQLite's backup command rather
+than `cp`:
+
+```bash
+sqlite3 /opt/flashcards/cards.db ".backup /var/backups/cards-$(date +%F).db"
+tar -czf /var/backups/uploads-$(date +%F).tar.gz -C /opt/flashcards uploads
+```
 
 ## API
 

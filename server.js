@@ -10,6 +10,9 @@ const APP_DIR = __dirname;
 const DB_PATH = process.env.DB_PATH || path.join(APP_DIR, 'cards.db');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(APP_DIR, 'uploads');
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
+// Serve the app under a subpath (e.g. BASE_PATH=/flashcards) when the reverse
+// proxy can't be configured to strip a prefix. Empty means root.
+const BASE_PATH = ('/' + (process.env.BASE_PATH || '').replace(/^\/+|\/+$/g, '')).replace(/\/$/, '');
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -368,16 +371,17 @@ function parseCookies(header) {
 }
 
 const SESSION_DAYS = 30;
+const COOKIE_PATH = BASE_PATH || '/';
 function startSession(res, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expires);
-  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 24 * 60 * 60}`);
+  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=${COOKIE_PATH}; Max-Age=${SESSION_DAYS * 24 * 60 * 60}`);
   return token;
 }
 
 function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  res.setHeader('Set-Cookie', `sid=; HttpOnly; SameSite=Lax; Path=${COOKIE_PATH}; Max-Age=0`);
 }
 
 function getSessionUser(req) {
@@ -780,8 +784,20 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, count: c });
 });
 
-app.listen(PORT, () => {
+let server = app;
+if (BASE_PATH) {
+  const outer = express();
+  outer.get(BASE_PATH, (req, res, next) => {
+    if (req.originalUrl !== BASE_PATH) return next();
+    res.redirect(BASE_PATH + '/');
+  });
+  outer.use(BASE_PATH, app);
+  server = outer;
+}
+
+server.listen(PORT, () => {
   console.log(`Flash Cards server running on port ${PORT}`);
   console.log(`Database: ${DB_PATH}`);
   console.log(`Uploads: ${UPLOAD_DIR}`);
+  console.log(`Base path: ${BASE_PATH || '/'}`);
 });

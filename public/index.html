@@ -857,8 +857,14 @@
 
   let currentUser = null;
 
-  async function apiFetch(url, opts) {
-    const res = await fetch(url, opts);
+  // Works whether the app is served at / or under a subpath like /flashcards/
+  const BASE = location.pathname.endsWith('/')
+    ? location.pathname
+    : location.pathname.replace(/[^/]*$/, '');
+  const appUrl = (p) => BASE + String(p).replace(/^\//, '');
+
+  async function apiFetch(path, opts) {
+    const res = await fetch(url(path), opts);
     if (res.status === 401) { showAuth(); throw new Error('Not authenticated'); }
     return res;
   }
@@ -1001,7 +1007,7 @@
     errEl.classList.add('hidden');
     btn.disabled = true;
     try {
-      const res = await fetch('/api/' + authMode, {
+      const res = await fetch(appUrl('/api/' + authMode), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -1024,7 +1030,7 @@
   });
 
   $('logout-btn').addEventListener('click', async () => {
-    try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
+    try { await fetch(appUrl('/api/logout'), { method: 'POST' }); } catch (e) {}
     cards = [];
     decks = [];
     currentDeckId = null;
@@ -1036,7 +1042,7 @@
 
   async function init() {
     try {
-      const res = await fetch('/api/me');
+      const res = await fetch(appUrl('/api/me'));
       const data = await res.json();
       if (data.user) {
         showApp(data.user);
@@ -1213,10 +1219,10 @@
       const el = document.createElement('div');
       el.className = 'card';
       const frontThumb = c.image
-        ? `<img class="thumb" src="/uploads/${c.image}" alt="${escapeHtml(c.name)}" loading="lazy">`
+        ? `<img class="thumb" src="${appUrl('uploads/' + c.image)}" alt="${escapeHtml(c.name)}" loading="lazy">`
         : `<div class="thumb placeholder">&#128203;</div>`;
       const backThumb = c.image_back
-        ? `<img class="thumb" src="/uploads/${c.image_back}" alt="${escapeHtml(c.answer || c.name)}" loading="lazy">`
+        ? `<img class="thumb" src="${appUrl('uploads/' + c.image_back)}" alt="${escapeHtml(c.answer || c.name)}" loading="lazy">`
         : `<div class="thumb placeholder">&#128203;</div>`;
       const backCaption = c.answer
         ? `<div class="caption" title="${escapeHtml(c.answer)}">${escapeHtml(c.answer)}</div>`
@@ -1500,7 +1506,7 @@
     $('edit-remove-image-back').checked = false;
     $('edit-swap-images').checked = false;
     if (card.image) {
-      $('edit-current-img').src = '/uploads/' + card.image;
+      $('edit-current-img').src = appUrl('uploads/' + card.image);
       $('edit-current-img').classList.remove('hidden');
       $('edit-no-img').classList.add('hidden');
     } else {
@@ -1509,7 +1515,7 @@
       $('edit-no-img').classList.remove('hidden');
     }
     if (card.image_back) {
-      $('edit-current-img-back').src = '/uploads/' + card.image_back;
+      $('edit-current-img-back').src = appUrl('uploads/' + card.image_back);
       $('edit-current-img-back').classList.remove('hidden');
       $('edit-no-img-back').classList.add('hidden');
     } else {
@@ -1644,7 +1650,7 @@
     $('study-edit-btn').classList.remove('hidden');
 
     if (card.image) {
-      $('study-image').src = '/uploads/' + card.image;
+      $('study-image').src = appUrl('uploads/' + card.image);
       $('study-image').alt = card.name;
       $('study-image').classList.remove('hidden');
     } else {
@@ -1654,7 +1660,7 @@
     $('study-name').textContent = card.name;
 
     if (card.image_back) {
-      $('study-image-back').src = '/uploads/' + card.image_back;
+      $('study-image-back').src = appUrl('uploads/' + card.image_back);
       $('study-image-back').alt = card.answer || '';
       $('study-image-back').classList.remove('hidden');
     } else {
@@ -1761,7 +1767,7 @@
         const item = document.createElement('div');
         item.className = 'pc-item';
         item.innerHTML = c.image
-          ? `<img src="/uploads/${c.image}" alt="${escapeHtml(c.name)}" loading="lazy">`
+          ? `<img src="${appUrl('uploads/' + c.image)}" alt="${escapeHtml(c.name)}" loading="lazy">`
           : `<div class="pc-ph">&#128203;</div>`;
         item.innerHTML += `<span title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>`;
         box.appendChild(item);

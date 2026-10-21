@@ -106,19 +106,24 @@
 <body>
 <header>
   <h1>Admin — Users</h1>
-  <a class="back" href="/">&larr; Back to Flash Cards</a>
+  <a class="back" href="./">&larr; Back to Flash Cards</a>
 </header>
 <main><div id="content" class="notice">Loading&hellip;</div></main>
 <script>
+const BASE = location.pathname.endsWith('/')
+  ? location.pathname
+  : location.pathname.replace(/[^/]*$/, '');
+const appUrl = (p) => BASE + String(p).replace(/^\//, '');
+
 (async () => {
   const el = document.getElementById('content');
   let me = null;
-  try { me = (await (await fetch('/api/me')).json()).user; } catch (e) {}
+  try { me = (await (await fetch(appUrl('/api/me'))).json()).user; } catch (e) {}
   if (!me) {
-    el.innerHTML = 'You must be <a href="/">logged in</a> to view this page.';
+    el.innerHTML = 'You must be <a href="./">logged in</a> to view this page.';
     return;
   }
-  const res = await fetch('/api/admin/users');
+  const res = await fetch(appUrl('/api/admin/users'));
   if (res.status === 403) {
     el.textContent = 'You do not have admin access.';
     return;
@@ -156,7 +161,7 @@
     if (btn.classList.contains('reset')) {
       const pw = prompt(`New password for "${name}" (min 4 characters):`);
       if (pw === null) return;
-      const r = await fetch(`/api/admin/users/${id}/reset-password`, {
+      const r = await fetch(appUrl(`api/admin/users/${id}/reset-password`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pw })
@@ -164,7 +169,7 @@
       alert(r.ok ? `Password reset for ${name}.` : ((await r.json()).error || 'Failed'));
     } else if (btn.classList.contains('del')) {
       if (!confirm(`Delete user "${name}"? This removes all their decks, cards, and images. Cannot be undone.`)) return;
-      const r = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+      const r = await fetch(appUrl(`api/admin/users/${id}`), { method: 'DELETE' });
       if (r.ok) location.reload();
       else alert((await r.json()).error || 'Failed to delete');
     }
