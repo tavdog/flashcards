@@ -864,7 +864,7 @@
   const appUrl = (p) => BASE + String(p).replace(/^\//, '');
 
   async function apiFetch(path, opts) {
-    const res = await fetch(url(path), opts);
+    const res = await fetch(appUrl(path), opts);
     if (res.status === 401) { showAuth(); throw new Error('Not authenticated'); }
     return res;
   }
