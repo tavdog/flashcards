@@ -62,16 +62,23 @@ The app is configured entirely through environment variables:
 
 ## Deployment
 
-Deploy straight from this repository — no files need to be copied by hand.
+Deploy straight from this repository into your home directory — no root access
+and no system-wide paths are needed.
 
 ```bash
-git clone git@github.com:tavdog/flashcards.git /opt/flashcards
-cd /opt/flashcards
+git clone https://github.com/tavdog/flashcards.git ~/flashcards
+cd ~/flashcards
 npm ci --omit=dev
-PORT=3000 DB_PATH=/opt/flashcards/cards.db UPLOAD_DIR=/opt/flashcards/uploads npm start
+BASE_PATH=/flashcards PORT=3000 npm start
 ```
 
-The database and `uploads/` directory are created automatically on first run.
+The database and `uploads/` directory are created inside `~/flashcards` on
+first run, so everything the app owns stays in that one directory. Nothing is
+installed outside it — no global npm packages, no `/opt`, no `sudo`.
+
+All configuration is via environment variables, so run it with whatever
+supervisor your account has (a systemd user unit below, `tmux`, `nohup`, or a
+container entrypoint).
 
 ### Serving under a subpath
 
@@ -89,9 +96,9 @@ BASE_PATH=/flashcards PORT=3000 npm start
 (`/flashcards/...` → `127.0.0.1:3000/flashcards/...`). Leave `BASE_PATH` unset
 when the proxy strips the prefix or the app is served at the root.
 
-### systemd
+### systemd (user unit, no root)
 
-`/etc/systemd/system/cards.service`:
+`~/.config/systemd/user/cards.service`:
 
 ```ini
 [Unit]
@@ -100,28 +107,36 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/flashcards
+WorkingDirectory=%h/flashcards
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=BASE_PATH=/flashcards
-Environment=DB_PATH=/opt/flashcards/cards.db
-Environment=UPLOAD_DIR=/opt/flashcards/uploads
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 ```
 
 ```bash
-systemctl daemon-reload && systemctl enable --now cards.service
+mkdir -p ~/.config/systemd/user
+systemctl --user daemon-reload
+systemctl --user enable --now cards.service
+loginctl enable-linger "$USER"   # keep it running after you log out
 ```
+
+DB and uploads default to the working directory, so no extra paths are needed.
+Without systemd at all, `nohup env BASE_PATH=/flashcards PORT=3000 node server.js &`
+from `~/flashcards` works just as well.
+
+### Reverse proxy
 
 The bundled reference deployment runs behind Apache 2.4 with an HTTPS reverse
 proxy to `127.0.0.1:3000`; nginx works the same way (`proxy_pass
 http://127.0.0.1:3000;`). Allow uploads up to ~30 MB in the proxy
 (`LimitRequestBody` / `client_max_body_size`), since images are capped at 25 MB.
+Use an unprivileged port (1024+) so no root is required.
 
 ### Backups
 
@@ -129,8 +144,8 @@ The database runs in WAL mode, so copy it with SQLite's backup command rather
 than `cp`:
 
 ```bash
-sqlite3 /opt/flashcards/cards.db ".backup /var/backups/cards-$(date +%F).db"
-tar -czf /var/backups/uploads-$(date +%F).tar.gz -C /opt/flashcards uploads
+sqlite3 ~/flashcards/cards.db ".backup ~/backups/cards-$(date +%F).db"
+tar -czf ~/backups/uploads-$(date +%F).tar.gz -C ~/flashcards uploads
 ```
 
 ## API
