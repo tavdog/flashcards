@@ -11,7 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const Database = require('better-sqlite3');
 
 const PORT = process.env.PORT || 3000;
@@ -25,8 +25,15 @@ const BASE_PATH = ('/' + (process.env.BASE_PATH || '').replace(/^\/+|\/+$/g, '')
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const db = new Database(DB_PATH);
+let db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+
+function reopenDb() {
+  db = new Database(DB_PATH);
+  db.pragma('journal_mode = WAL');
+}
+
+function runMigrations() {
 db.exec(`
   CREATE TABLE IF NOT EXISTS cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,6 +143,9 @@ db.exec(`
     db.prepare('UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)').run();
   }
 })();
+}
+
+runMigrations();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -518,6 +528,80 @@ app.get('/api/admin/backup', requireAdmin, async (req, res) => {
   } catch (e) {
     cleanup();
     if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
+// Restores a backup produced by /api/admin/backup (.tar.gz) or a bare .db file.
+const restoreUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 1024 * 1024 * 1024 } });
+
+app.post('/api/admin/restore', requireAdmin, restoreUpload.single('backup'), (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No backup file uploaded' });
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fc-restore-'));
+  const cleanup = () => {
+    fs.rm(file.path, { force: true }, () => {});
+    fs.rm(work, { recursive: true, force: true }, () => {});
+  };
+  let closed = false;
+  try {
+    const name = (file.originalname || '').toLowerCase();
+    let dbFile = null;
+    let uploadsDir = null;
+
+    if (name.endsWith('.tar.gz') || name.endsWith('.tgz')) {
+      const members = execFileSync('tar', ['-tzf', file.path], { encoding: 'utf8' })
+        .split('\n').map((m) => m.trim()).filter(Boolean);
+      const unsafe = members.find((m) => m.startsWith('/') || m.split('/').includes('..'));
+      if (unsafe) throw new Error('Archive contains an unsafe path: ' + unsafe);
+      execFileSync('tar', ['-xzf', file.path, '-C', work]);
+      if (fs.existsSync(path.join(work, 'cards.db'))) dbFile = path.join(work, 'cards.db');
+      if (fs.existsSync(path.join(work, 'uploads'))) uploadsDir = path.join(work, 'uploads');
+    } else if (name.endsWith('.db')) {
+      dbFile = file.path;
+    } else {
+      throw new Error('Upload a .tar.gz backup or a .db file');
+    }
+    if (!dbFile) throw new Error('No cards.db found in the archive');
+
+    const check = new Database(dbFile, { readonly: true });
+    try {
+      const integrity = check.pragma('integrity_check', { simple: true });
+      if (integrity !== 'ok') throw new Error('Backup failed integrity check: ' + integrity);
+      const tables = check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
+      for (const t of ['users', 'cards', 'decks']) {
+        if (!tables.includes(t)) throw new Error('Backup is missing the "' + t + '" table');
+      }
+    } finally {
+      check.close();
+    }
+
+    const safety = `${DB_PATH}.pre-restore-${Date.now()}`;
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.close();
+    closed = true;
+    fs.copyFileSync(DB_PATH, safety);
+    fs.copyFileSync(dbFile, DB_PATH);
+    for (const suffix of ['-wal', '-shm']) fs.rmSync(DB_PATH + suffix, { force: true });
+    reopenDb();
+    closed = false;
+    runMigrations();
+
+    if (uploadsDir) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+      fs.cpSync(uploadsDir, UPLOAD_DIR, { recursive: true, force: true });
+    }
+
+    const stats = {
+      users: db.prepare('SELECT COUNT(*) AS n FROM users').get().n,
+      cards: db.prepare('SELECT COUNT(*) AS n FROM cards').get().n,
+      uploads: fs.readdirSync(UPLOAD_DIR).length
+    };
+    cleanup();
+    res.json({ ok: true, safetyCopy: path.basename(safety), ...stats });
+  } catch (e) {
+    if (closed) { try { reopenDb(); } catch (err) {} }
+    cleanup();
+    if (!res.headersSent) res.status(400).json({ error: e.message });
   }
 });
 

@@ -90,6 +90,29 @@
     padding: 2px 8px;
     border-radius: 999px;
   }
+  .panel {
+    margin-top: 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px 24px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 6px; font-weight: 650; }
+  .panel .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.5; }
+  .panel .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .panel input[type=file] { font-size: 13px; }
+  .panel button {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .panel button:hover { border-color: var(--accent); color: var(--accent); }
+  #restore-status { font-size: 13px; color: var(--muted); }
   td.actions { white-space: nowrap; text-align: right; width: 220px; }
   td.actions button {
     border: 1px solid var(--border);
@@ -159,7 +182,21 @@ const appUrl = (p) => BASE + String(p).replace(/^\//, '');
         <tr><th>ID</th><th>User</th><th style="text-align:center">Decks</th><th style="text-align:center">Cards</th><th>Joined</th><th></th></tr>
       </thead>
       <tbody>${rows}</tbody>
-    </table>`;
+    </table>
+    <section class="panel">
+      <h2>Restore from backup</h2>
+      <p class="hint">
+        Upload a <code>flashcards-backup-*.tar.gz</code> (or a bare <code>.db</code> file) produced by the
+        Download backup button. The current database is replaced and its images are merged in; a copy of the
+        current database is kept next to it as <code>cards.db.pre-restore-*</code>. You will need to log in
+        again with an account from the restored backup.
+      </p>
+      <div class="row">
+        <input type="file" id="restore-file" accept=".gz,.tgz,.db,application/gzip">
+        <button type="button" id="restore-btn">Restore</button>
+        <span id="restore-status"></span>
+      </div>
+    </section>`;
   document.getElementById('users').addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
@@ -181,6 +218,27 @@ const appUrl = (p) => BASE + String(p).replace(/^\//, '');
       if (r.ok) location.reload();
       else alert((await r.json()).error || 'Failed to delete');
     }
+  });
+
+  document.getElementById('restore-btn').addEventListener('click', async () => {
+    const input = document.getElementById('restore-file');
+    const status = document.getElementById('restore-status');
+    if (!input.files[0]) { status.textContent = 'Choose a backup file first.'; return; }
+    if (!confirm('Replace the current database with this backup? A safety copy of the current database is kept.')) return;
+    const fd = new FormData();
+    fd.append('backup', input.files[0]);
+    status.textContent = 'Restoring…';
+    let r, data;
+    try {
+      r = await fetch(appUrl('/api/admin/restore'), { method: 'POST', body: fd });
+      data = await r.json().catch(() => ({}));
+    } catch (e) {
+      status.textContent = 'Upload failed: ' + e.message;
+      return;
+    }
+    if (!r.ok) { status.textContent = 'Restore failed: ' + (data.error || r.status); return; }
+    status.textContent = `Restored ${data.cards} card(s) for ${data.users} user(s). Reloading…`;
+    setTimeout(() => location.reload(), 2000);
   });
 })();
 

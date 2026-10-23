@@ -182,9 +182,12 @@ checks the app with no extra configuration.
    a single volume and aren't safe to share between instances.
 5. `railway.json` points the health check at `/api/health`.
 
-To back up, pull the volume contents periodically (`railway volume` commands in
-the Railway CLI) or run `.backup` from a shell on the service; the files to
-save are `/data/cards.db` and `/data/uploads`.
+**Moving existing data to Railway:** open the admin page on the old install,
+click **Download backup**, then on the new Railway instance register an account
+(it becomes admin), open its admin page and use **Restore from backup** to
+upload the `.tar.gz`. The current database is replaced (a safety copy is kept as
+`cards.db.pre-restore-*`) and the archive's images are merged into `uploads/`.
+Log in afterwards with an account from the backup.
 
 ### Backups
 
